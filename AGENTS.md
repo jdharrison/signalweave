@@ -67,7 +67,7 @@ Crates added in future milestones (do not create empty scaffolding):
 | 1 — Core + Protocol vertical slice | **Complete** |
 | 2 — WebSocket server + clients | **Complete** — WebSocket vertical slice, presence/transition lifecycle, Rust client, and TS live-frame decode validation exist |
 | 3 — Interest management + load runner | **Complete** — bounded 2D/3D grid routing and a bounded local load runner exist; consumer-specific proxy/fidelity policy remains deferred |
-| 4 — QUIC + WebTransport | Deferred |
+| 4 — QUIC + WebTransport | **Initialized** — native QUIC reliable-stream adapter and development UDP listener exist; datagram mapping, conformance coverage, and WebTransport remain |
 | 5 — Inference plane | Deferred |
 | 6 — Cloud staging plan | Deferred (approval-gated) |
 | 7 — DARK FOREST + portfolio examples | Deferred |
@@ -392,7 +392,7 @@ ProtocolError(..)               (20)  — optional scope, delivery=ReliableOrder
 
 ```
 Rust: 1.98.0 stable (rust-toolchain.toml pins this)
-Cargo workspace resolver: 3, edition: 2024, rust-version: 1.85
+Cargo workspace resolver: 3, edition: 2024, rust-version: 1.88
 Available: cargo, rustfmt, clippy, Node 22.23.2, npm 10.9.8, Docker 29.7.2, gh 2.98.0
 Absent: system flatc (vendored via Cargo), .NET, Terraform, OpenTofu
 GitHub: jdharrison/signalweave (public), SSH remote, gh authenticated

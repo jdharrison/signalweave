@@ -1,9 +1,9 @@
 [package]
-name = "signalweave-transport-websocket"
+name = "signalweave-transport"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Axum WebSocket adapter for Signalweave"
+description = "Transport-independent Signalweave worker and protocol bridge"
 license.workspace = true
 repository.workspace = true
 publish = false
@@ -14,11 +14,7 @@ path = "src/lib.rs"
 [dependencies]
 signalweave-core.workspace = true
 signalweave-protocol.workspace = true
-signalweave-transport.workspace = true
-axum.workspace = true
 tokio.workspace = true
-futures-util.workspace = true
-tracing.workspace = true
 
 [lints]
 workspace = true

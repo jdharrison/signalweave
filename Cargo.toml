@@ -3,7 +3,9 @@ members = [
     "crates/signalweave-core",
     "crates/signalweave-protocol",
     "crates/signalweave-server",
+    "crates/signalweave-transport",
     "crates/signalweave-transport-websocket",
+    "crates/signalweave-transport-quic",
     "crates/signalweave-client-rust",
     "crates/signalweave-loadtest",
 ]
@@ -12,7 +14,7 @@ resolver = "3"
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/jdharrison/signalweave"
 
@@ -26,10 +28,16 @@ flatc-fork = "=0.6.0"
 # Internal crates
 signalweave-core = { path = "crates/signalweave-core" }
 signalweave-protocol = { path = "crates/signalweave-protocol" }
+signalweave-transport = { path = "crates/signalweave-transport" }
 signalweave-transport-websocket = { path = "crates/signalweave-transport-websocket" }
+signalweave-transport-quic = { path = "crates/signalweave-transport-quic" }
 # Async runtime
 tokio = { version = "1.53", features = ["full"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+# QUIC + TLS
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rcgen = "0.13"
 # HTTP + WebSocket
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.7", features = ["trace"] }
