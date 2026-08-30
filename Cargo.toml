@@ -9,6 +9,10 @@ members = [
     "crates/signalweave-transport-webtransport",
     "crates/signalweave-client-rust",
     "crates/signalweave-loadtest",
+    "crates/signalweave-inference-core",
+    "crates/signalweave-inference-tools",
+    "crates/signalweave-inference-test-provider",
+    "crates/signalweave-inference-coordinator",
 ]
 resolver = "3"
 
@@ -33,9 +37,14 @@ signalweave-transport = { path = "crates/signalweave-transport" }
 signalweave-transport-websocket = { path = "crates/signalweave-transport-websocket" }
 signalweave-transport-quic = { path = "crates/signalweave-transport-quic" }
 signalweave-transport-webtransport = { path = "crates/signalweave-transport-webtransport" }
+signalweave-inference-core = { path = "crates/signalweave-inference-core" }
+signalweave-inference-tools = { path = "crates/signalweave-inference-tools" }
+signalweave-inference-test-provider = { path = "crates/signalweave-inference-test-provider" }
+signalweave-inference-coordinator = { path = "crates/signalweave-inference-coordinator" }
 # Async runtime
 tokio = { version = "1.53", features = ["full"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+async-trait = "0.1"
 # QUIC + TLS
 quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }

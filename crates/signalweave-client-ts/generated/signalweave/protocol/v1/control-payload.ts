@@ -8,6 +8,14 @@ import { CapabilitiesPayload } from '../../../signalweave/protocol/v1/capabiliti
 import { EntityEnteredPayload } from '../../../signalweave/protocol/v1/entity-entered-payload.js';
 import { EntityLeftPayload } from '../../../signalweave/protocol/v1/entity-left-payload.js';
 import { HelloPayload } from '../../../signalweave/protocol/v1/hello-payload.js';
+import { InferenceAcceptedPayload } from '../../../signalweave/protocol/v1/inference-accepted-payload.js';
+import { InferenceCancelledPayload } from '../../../signalweave/protocol/v1/inference-cancelled-payload.js';
+import { InferenceCompletedPayload } from '../../../signalweave/protocol/v1/inference-completed-payload.js';
+import { InferenceExpiredPayload } from '../../../signalweave/protocol/v1/inference-expired-payload.js';
+import { InferenceFailedPayload } from '../../../signalweave/protocol/v1/inference-failed-payload.js';
+import { InferenceProgressPayload } from '../../../signalweave/protocol/v1/inference-progress-payload.js';
+import { InferenceRequestedPayload } from '../../../signalweave/protocol/v1/inference-requested-payload.js';
+import { InferenceStreamChunkPayload } from '../../../signalweave/protocol/v1/inference-stream-chunk-payload.js';
 import { JoinSessionPayload } from '../../../signalweave/protocol/v1/join-session-payload.js';
 import { LeaveSessionPayload } from '../../../signalweave/protocol/v1/leave-session-payload.js';
 import { PingPayload } from '../../../signalweave/protocol/v1/ping-payload.js';
@@ -18,6 +26,10 @@ import { SpaceTransitionPayload } from '../../../signalweave/protocol/v1/space-t
 import { SubscribeSpacePayload } from '../../../signalweave/protocol/v1/subscribe-space-payload.js';
 import { SubscriptionAcceptedPayload } from '../../../signalweave/protocol/v1/subscription-accepted-payload.js';
 import { SubscriptionRejectedPayload } from '../../../signalweave/protocol/v1/subscription-rejected-payload.js';
+import { ToolCallAcceptedPayload } from '../../../signalweave/protocol/v1/tool-call-accepted-payload.js';
+import { ToolCallCompletedPayload } from '../../../signalweave/protocol/v1/tool-call-completed-payload.js';
+import { ToolCallProposedPayload } from '../../../signalweave/protocol/v1/tool-call-proposed-payload.js';
+import { ToolCallRejectedPayload } from '../../../signalweave/protocol/v1/tool-call-rejected-payload.js';
 import { UnsubscribeSpacePayload } from '../../../signalweave/protocol/v1/unsubscribe-space-payload.js';
 
 
@@ -39,15 +51,27 @@ export enum ControlPayload {
   SpaceTransitionPayload = 14,
   PingPayload = 15,
   PongPayload = 16,
-  ProtocolErrorPayload = 17
+  ProtocolErrorPayload = 17,
+  InferenceRequestedPayload = 18,
+  InferenceAcceptedPayload = 19,
+  InferenceProgressPayload = 20,
+  InferenceStreamChunkPayload = 21,
+  InferenceCompletedPayload = 22,
+  InferenceFailedPayload = 23,
+  InferenceCancelledPayload = 24,
+  InferenceExpiredPayload = 25,
+  ToolCallProposedPayload = 26,
+  ToolCallAcceptedPayload = 27,
+  ToolCallRejectedPayload = 28,
+  ToolCallCompletedPayload = 29
 }
 
 export function unionToControlPayload(
   type: ControlPayload,
-  accessor: (obj:AuthenticatePayload|AuthenticatedPayload|CapabilitiesPayload|EntityEnteredPayload|EntityLeftPayload|HelloPayload|JoinSessionPayload|LeaveSessionPayload|PingPayload|PongPayload|ProtocolErrorPayload|SnapshotRequestPayload|SpaceTransitionPayload|SubscribeSpacePayload|SubscriptionAcceptedPayload|SubscriptionRejectedPayload|UnsubscribeSpacePayload) => AuthenticatePayload|AuthenticatedPayload|CapabilitiesPayload|EntityEnteredPayload|EntityLeftPayload|HelloPayload|JoinSessionPayload|LeaveSessionPayload|PingPayload|PongPayload|ProtocolErrorPayload|SnapshotRequestPayload|SpaceTransitionPayload|SubscribeSpacePayload|SubscriptionAcceptedPayload|SubscriptionRejectedPayload|UnsubscribeSpacePayload|null
-): AuthenticatePayload|AuthenticatedPayload|CapabilitiesPayload|EntityEnteredPayload|EntityLeftPayload|HelloPayload|JoinSessionPayload|LeaveSessionPayload|PingPayload|PongPayload|ProtocolErrorPayload|SnapshotRequestPayload|SpaceTransitionPayload|SubscribeSpacePayload|SubscriptionAcceptedPayload|SubscriptionRejectedPayload|UnsubscribeSpacePayload|null {
+  accessor: (obj:AuthenticatePayload|AuthenticatedPayload|CapabilitiesPayload|EntityEnteredPayload|EntityLeftPayload|HelloPayload|InferenceAcceptedPayload|InferenceCancelledPayload|InferenceCompletedPayload|InferenceExpiredPayload|InferenceFailedPayload|InferenceProgressPayload|InferenceRequestedPayload|InferenceStreamChunkPayload|JoinSessionPayload|LeaveSessionPayload|PingPayload|PongPayload|ProtocolErrorPayload|SnapshotRequestPayload|SpaceTransitionPayload|SubscribeSpacePayload|SubscriptionAcceptedPayload|SubscriptionRejectedPayload|ToolCallAcceptedPayload|ToolCallCompletedPayload|ToolCallProposedPayload|ToolCallRejectedPayload|UnsubscribeSpacePayload) => AuthenticatePayload|AuthenticatedPayload|CapabilitiesPayload|EntityEnteredPayload|EntityLeftPayload|HelloPayload|InferenceAcceptedPayload|InferenceCancelledPayload|InferenceCompletedPayload|InferenceExpiredPayload|InferenceFailedPayload|InferenceProgressPayload|InferenceRequestedPayload|InferenceStreamChunkPayload|JoinSessionPayload|LeaveSessionPayload|PingPayload|PongPayload|ProtocolErrorPayload|SnapshotRequestPayload|SpaceTransitionPayload|SubscribeSpacePayload|SubscriptionAcceptedPayload|SubscriptionRejectedPayload|ToolCallAcceptedPayload|ToolCallCompletedPayload|ToolCallProposedPayload|ToolCallRejectedPayload|UnsubscribeSpacePayload|null
+): AuthenticatePayload|AuthenticatedPayload|CapabilitiesPayload|EntityEnteredPayload|EntityLeftPayload|HelloPayload|InferenceAcceptedPayload|InferenceCancelledPayload|InferenceCompletedPayload|InferenceExpiredPayload|InferenceFailedPayload|InferenceProgressPayload|InferenceRequestedPayload|InferenceStreamChunkPayload|JoinSessionPayload|LeaveSessionPayload|PingPayload|PongPayload|ProtocolErrorPayload|SnapshotRequestPayload|SpaceTransitionPayload|SubscribeSpacePayload|SubscriptionAcceptedPayload|SubscriptionRejectedPayload|ToolCallAcceptedPayload|ToolCallCompletedPayload|ToolCallProposedPayload|ToolCallRejectedPayload|UnsubscribeSpacePayload|null {
   switch(ControlPayload[type]) {
-    case 'NONE': return null;
+    case 'NONE': return null; 
     case 'HelloPayload': return accessor(new HelloPayload())! as HelloPayload;
     case 'CapabilitiesPayload': return accessor(new CapabilitiesPayload())! as CapabilitiesPayload;
     case 'AuthenticatePayload': return accessor(new AuthenticatePayload())! as AuthenticatePayload;
@@ -65,17 +89,29 @@ export function unionToControlPayload(
     case 'PingPayload': return accessor(new PingPayload())! as PingPayload;
     case 'PongPayload': return accessor(new PongPayload())! as PongPayload;
     case 'ProtocolErrorPayload': return accessor(new ProtocolErrorPayload())! as ProtocolErrorPayload;
+    case 'InferenceRequestedPayload': return accessor(new InferenceRequestedPayload())! as InferenceRequestedPayload;
+    case 'InferenceAcceptedPayload': return accessor(new InferenceAcceptedPayload())! as InferenceAcceptedPayload;
+    case 'InferenceProgressPayload': return accessor(new InferenceProgressPayload())! as InferenceProgressPayload;
+    case 'InferenceStreamChunkPayload': return accessor(new InferenceStreamChunkPayload())! as InferenceStreamChunkPayload;
+    case 'InferenceCompletedPayload': return accessor(new InferenceCompletedPayload())! as InferenceCompletedPayload;
+    case 'InferenceFailedPayload': return accessor(new InferenceFailedPayload())! as InferenceFailedPayload;
+    case 'InferenceCancelledPayload': return accessor(new InferenceCancelledPayload())! as InferenceCancelledPayload;
+    case 'InferenceExpiredPayload': return accessor(new InferenceExpiredPayload())! as InferenceExpiredPayload;
+    case 'ToolCallProposedPayload': return accessor(new ToolCallProposedPayload())! as ToolCallProposedPayload;
+    case 'ToolCallAcceptedPayload': return accessor(new ToolCallAcceptedPayload())! as ToolCallAcceptedPayload;
+    case 'ToolCallRejectedPayload': return accessor(new ToolCallRejectedPayload())! as ToolCallRejectedPayload;
+    case 'ToolCallCompletedPayload': return accessor(new ToolCallCompletedPayload())! as ToolCallCompletedPayload;
     default: return null;
   }
 }
 
 export function unionListToControlPayload(
-  type: ControlPayload,
-  accessor: (index: number, obj:AuthenticatePayload|AuthenticatedPayload|CapabilitiesPayload|EntityEnteredPayload|EntityLeftPayload|HelloPayload|JoinSessionPayload|LeaveSessionPayload|PingPayload|PongPayload|ProtocolErrorPayload|SnapshotRequestPayload|SpaceTransitionPayload|SubscribeSpacePayload|SubscriptionAcceptedPayload|SubscriptionRejectedPayload|UnsubscribeSpacePayload) => AuthenticatePayload|AuthenticatedPayload|CapabilitiesPayload|EntityEnteredPayload|EntityLeftPayload|HelloPayload|JoinSessionPayload|LeaveSessionPayload|PingPayload|PongPayload|ProtocolErrorPayload|SnapshotRequestPayload|SpaceTransitionPayload|SubscribeSpacePayload|SubscriptionAcceptedPayload|SubscriptionRejectedPayload|UnsubscribeSpacePayload|null,
+  type: ControlPayload, 
+  accessor: (index: number, obj:AuthenticatePayload|AuthenticatedPayload|CapabilitiesPayload|EntityEnteredPayload|EntityLeftPayload|HelloPayload|InferenceAcceptedPayload|InferenceCancelledPayload|InferenceCompletedPayload|InferenceExpiredPayload|InferenceFailedPayload|InferenceProgressPayload|InferenceRequestedPayload|InferenceStreamChunkPayload|JoinSessionPayload|LeaveSessionPayload|PingPayload|PongPayload|ProtocolErrorPayload|SnapshotRequestPayload|SpaceTransitionPayload|SubscribeSpacePayload|SubscriptionAcceptedPayload|SubscriptionRejectedPayload|ToolCallAcceptedPayload|ToolCallCompletedPayload|ToolCallProposedPayload|ToolCallRejectedPayload|UnsubscribeSpacePayload) => AuthenticatePayload|AuthenticatedPayload|CapabilitiesPayload|EntityEnteredPayload|EntityLeftPayload|HelloPayload|InferenceAcceptedPayload|InferenceCancelledPayload|InferenceCompletedPayload|InferenceExpiredPayload|InferenceFailedPayload|InferenceProgressPayload|InferenceRequestedPayload|InferenceStreamChunkPayload|JoinSessionPayload|LeaveSessionPayload|PingPayload|PongPayload|ProtocolErrorPayload|SnapshotRequestPayload|SpaceTransitionPayload|SubscribeSpacePayload|SubscriptionAcceptedPayload|SubscriptionRejectedPayload|ToolCallAcceptedPayload|ToolCallCompletedPayload|ToolCallProposedPayload|ToolCallRejectedPayload|UnsubscribeSpacePayload|null, 
   index: number
-): AuthenticatePayload|AuthenticatedPayload|CapabilitiesPayload|EntityEnteredPayload|EntityLeftPayload|HelloPayload|JoinSessionPayload|LeaveSessionPayload|PingPayload|PongPayload|ProtocolErrorPayload|SnapshotRequestPayload|SpaceTransitionPayload|SubscribeSpacePayload|SubscriptionAcceptedPayload|SubscriptionRejectedPayload|UnsubscribeSpacePayload|null {
+): AuthenticatePayload|AuthenticatedPayload|CapabilitiesPayload|EntityEnteredPayload|EntityLeftPayload|HelloPayload|InferenceAcceptedPayload|InferenceCancelledPayload|InferenceCompletedPayload|InferenceExpiredPayload|InferenceFailedPayload|InferenceProgressPayload|InferenceRequestedPayload|InferenceStreamChunkPayload|JoinSessionPayload|LeaveSessionPayload|PingPayload|PongPayload|ProtocolErrorPayload|SnapshotRequestPayload|SpaceTransitionPayload|SubscribeSpacePayload|SubscriptionAcceptedPayload|SubscriptionRejectedPayload|ToolCallAcceptedPayload|ToolCallCompletedPayload|ToolCallProposedPayload|ToolCallRejectedPayload|UnsubscribeSpacePayload|null {
   switch(ControlPayload[type]) {
-    case 'NONE': return null;
+    case 'NONE': return null; 
     case 'HelloPayload': return accessor(index, new HelloPayload())! as HelloPayload;
     case 'CapabilitiesPayload': return accessor(index, new CapabilitiesPayload())! as CapabilitiesPayload;
     case 'AuthenticatePayload': return accessor(index, new AuthenticatePayload())! as AuthenticatePayload;
@@ -93,6 +129,18 @@ export function unionListToControlPayload(
     case 'PingPayload': return accessor(index, new PingPayload())! as PingPayload;
     case 'PongPayload': return accessor(index, new PongPayload())! as PongPayload;
     case 'ProtocolErrorPayload': return accessor(index, new ProtocolErrorPayload())! as ProtocolErrorPayload;
+    case 'InferenceRequestedPayload': return accessor(index, new InferenceRequestedPayload())! as InferenceRequestedPayload;
+    case 'InferenceAcceptedPayload': return accessor(index, new InferenceAcceptedPayload())! as InferenceAcceptedPayload;
+    case 'InferenceProgressPayload': return accessor(index, new InferenceProgressPayload())! as InferenceProgressPayload;
+    case 'InferenceStreamChunkPayload': return accessor(index, new InferenceStreamChunkPayload())! as InferenceStreamChunkPayload;
+    case 'InferenceCompletedPayload': return accessor(index, new InferenceCompletedPayload())! as InferenceCompletedPayload;
+    case 'InferenceFailedPayload': return accessor(index, new InferenceFailedPayload())! as InferenceFailedPayload;
+    case 'InferenceCancelledPayload': return accessor(index, new InferenceCancelledPayload())! as InferenceCancelledPayload;
+    case 'InferenceExpiredPayload': return accessor(index, new InferenceExpiredPayload())! as InferenceExpiredPayload;
+    case 'ToolCallProposedPayload': return accessor(index, new ToolCallProposedPayload())! as ToolCallProposedPayload;
+    case 'ToolCallAcceptedPayload': return accessor(index, new ToolCallAcceptedPayload())! as ToolCallAcceptedPayload;
+    case 'ToolCallRejectedPayload': return accessor(index, new ToolCallRejectedPayload())! as ToolCallRejectedPayload;
+    case 'ToolCallCompletedPayload': return accessor(index, new ToolCallCompletedPayload())! as ToolCallCompletedPayload;
     default: return null;
   }
 }

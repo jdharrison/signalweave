@@ -1,4 +1,5 @@
 #[path = "../tests/common/mod.rs"]
+#[allow(dead_code)]
 mod common;
 
 use std::{fs, path::PathBuf};

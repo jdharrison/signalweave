@@ -1,0 +1,19 @@
+[package]
+name = "signalweave-inference-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Inference capability, request, and provider data model, isolated from signalweave-core"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+signalweave-core.workspace = true
+async-trait.workspace = true
+
+[lints]
+workspace = true

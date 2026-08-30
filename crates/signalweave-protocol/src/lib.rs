@@ -14,10 +14,13 @@ mod generated {
 pub use codec::{Codec, CodecError, CodecLimits};
 pub use model::{
     Authenticate, Authenticated, AuthenticationScheme, Capabilities, ControlPayload, DeliveryClass,
-    EntityEntered, EntityLeaveReason, EntityLeft, Envelope, Hello, JoinSession, LeaveSession,
-    MessageKind, MessagePayload, OpaquePayload, Ping, Pong, ProtocolError, ProtocolErrorCode,
-    SnapshotRequest, SpaceTransition, SubscribeSpace, SubscriptionAccepted, SubscriptionRejected,
-    SubscriptionRejectionCode, UnsubscribeSpace,
+    EntityEntered, EntityLeaveReason, EntityLeft, Envelope, Hello, InferenceAccepted,
+    InferenceCancelled, InferenceCompleted, InferenceExpired, InferenceFailed, InferenceProgress,
+    InferenceRequested, InferenceStreamChunk, JoinSession, LeaveSession, MessageKind,
+    MessagePayload, OpaquePayload, Ping, Pong, ProtocolError, ProtocolErrorCode, SnapshotRequest,
+    SpaceTransition, SubscribeSpace, SubscriptionAccepted, SubscriptionRejected,
+    SubscriptionRejectionCode, ToolCallAccepted, ToolCallCompleted, ToolCallProposed,
+    ToolCallRejected, ToolCallRejectionCode, UnsubscribeSpace,
 };
 
 pub const PROTOCOL_VERSION: u16 = 1;

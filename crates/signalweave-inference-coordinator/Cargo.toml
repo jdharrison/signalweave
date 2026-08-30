@@ -1,0 +1,23 @@
+[package]
+name = "signalweave-inference-coordinator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Adjacent-plane inference coordinator: AI-identity connections, bounded provider queue, lifecycle fan-out"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+signalweave-core.workspace = true
+signalweave-protocol.workspace = true
+signalweave-transport.workspace = true
+signalweave-inference-core.workspace = true
+signalweave-inference-tools.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

@@ -46,6 +46,18 @@ numeric_enum!(MessageKind, u8, {
     Ping = 18,
     Pong = 19,
     ProtocolError = 20,
+    InferenceRequested = 21,
+    InferenceAccepted = 22,
+    InferenceProgress = 23,
+    InferenceStreamChunk = 24,
+    InferenceCompleted = 25,
+    InferenceFailed = 26,
+    InferenceCancelled = 27,
+    InferenceExpired = 28,
+    ToolCallProposed = 29,
+    ToolCallAccepted = 30,
+    ToolCallRejected = 31,
+    ToolCallCompleted = 32,
 });
 
 numeric_enum!(DeliveryClass, u8, {
@@ -101,6 +113,14 @@ numeric_enum!(ProtocolErrorCode, u16, {
     PayloadTooLarge = 9,
     RateLimited = 10,
     Internal = 11,
+});
+
+numeric_enum!(ToolCallRejectionCode, u8, {
+    Unknown = 0,
+    Stale = 1,
+    Unauthorized = 2,
+    InvalidArguments = 3,
+    PolicyDenied = 4,
 });
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -209,6 +229,75 @@ pub struct ProtocolError {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InferenceRequested {
+    pub capability: String,
+    pub deadline_ms: u64,
+    pub input: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InferenceAccepted {
+    pub queued_position: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InferenceProgress {
+    pub percent: u8,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InferenceStreamChunk {
+    pub sequence: u32,
+    pub chunk: Vec<u8>,
+    pub is_final: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InferenceCompleted {
+    pub result: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InferenceFailed {
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InferenceCancelled {
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InferenceExpired {
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ToolCallProposed {
+    pub tool_id: String,
+    pub tool_version: u32,
+    pub arguments: Vec<u8>,
+    pub expected_revision: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ToolCallAccepted {
+    pub tool_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ToolCallRejected {
+    pub code: ToolCallRejectionCode,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ToolCallCompleted {
+    pub new_revision: u64,
+    pub result: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ControlPayload {
     Hello(Hello),
     Capabilities(Capabilities),
@@ -227,6 +316,18 @@ pub enum ControlPayload {
     Ping(Ping),
     Pong(Pong),
     ProtocolError(ProtocolError),
+    InferenceRequested(InferenceRequested),
+    InferenceAccepted(InferenceAccepted),
+    InferenceProgress(InferenceProgress),
+    InferenceStreamChunk(InferenceStreamChunk),
+    InferenceCompleted(InferenceCompleted),
+    InferenceFailed(InferenceFailed),
+    InferenceCancelled(InferenceCancelled),
+    InferenceExpired(InferenceExpired),
+    ToolCallProposed(ToolCallProposed),
+    ToolCallAccepted(ToolCallAccepted),
+    ToolCallRejected(ToolCallRejected),
+    ToolCallCompleted(ToolCallCompleted),
 }
 
 impl ControlPayload {
@@ -250,6 +351,18 @@ impl ControlPayload {
             Self::Ping(_) => MessageKind::Ping,
             Self::Pong(_) => MessageKind::Pong,
             Self::ProtocolError(_) => MessageKind::ProtocolError,
+            Self::InferenceRequested(_) => MessageKind::InferenceRequested,
+            Self::InferenceAccepted(_) => MessageKind::InferenceAccepted,
+            Self::InferenceProgress(_) => MessageKind::InferenceProgress,
+            Self::InferenceStreamChunk(_) => MessageKind::InferenceStreamChunk,
+            Self::InferenceCompleted(_) => MessageKind::InferenceCompleted,
+            Self::InferenceFailed(_) => MessageKind::InferenceFailed,
+            Self::InferenceCancelled(_) => MessageKind::InferenceCancelled,
+            Self::InferenceExpired(_) => MessageKind::InferenceExpired,
+            Self::ToolCallProposed(_) => MessageKind::ToolCallProposed,
+            Self::ToolCallAccepted(_) => MessageKind::ToolCallAccepted,
+            Self::ToolCallRejected(_) => MessageKind::ToolCallRejected,
+            Self::ToolCallCompleted(_) => MessageKind::ToolCallCompleted,
         }
     }
 
@@ -268,6 +381,20 @@ impl ControlPayload {
             Self::LeaveSession(value) => value.reason.len(),
             Self::SubscriptionRejected(value) => value.reason.len(),
             Self::ProtocolError(value) => value.message.len(),
+            Self::InferenceRequested(value) => {
+                value.capability.len().saturating_add(value.input.len())
+            }
+            Self::InferenceStreamChunk(value) => value.chunk.len(),
+            Self::InferenceCompleted(value) => value.result.len(),
+            Self::InferenceFailed(value) => value.reason.len(),
+            Self::InferenceCancelled(value) => value.reason.len(),
+            Self::InferenceExpired(value) => value.reason.len(),
+            Self::ToolCallProposed(value) => {
+                value.tool_id.len().saturating_add(value.arguments.len())
+            }
+            Self::ToolCallAccepted(value) => value.tool_id.len(),
+            Self::ToolCallRejected(value) => value.reason.len(),
+            Self::ToolCallCompleted(value) => value.result.len(),
             Self::Authenticated(_)
             | Self::SubscribeSpace(_)
             | Self::UnsubscribeSpace(_)
@@ -277,7 +404,9 @@ impl ControlPayload {
             | Self::SnapshotRequest(_)
             | Self::SpaceTransition(_)
             | Self::Ping(_)
-            | Self::Pong(_) => 0,
+            | Self::Pong(_)
+            | Self::InferenceAccepted(_)
+            | Self::InferenceProgress(_) => 0,
         }
     }
 }

@@ -28,7 +28,19 @@ enum MessageKind : ubyte {
   SpaceTransition = 17,
   Ping = 18,
   Pong = 19,
-  ProtocolError = 20
+  ProtocolError = 20,
+  InferenceRequested = 21,
+  InferenceAccepted = 22,
+  InferenceProgress = 23,
+  InferenceStreamChunk = 24,
+  InferenceCompleted = 25,
+  InferenceFailed = 26,
+  InferenceCancelled = 27,
+  InferenceExpired = 28,
+  ToolCallProposed = 29,
+  ToolCallAccepted = 30,
+  ToolCallRejected = 31,
+  ToolCallCompleted = 32
 }
 
 enum DeliveryClass : ubyte {
@@ -75,6 +87,14 @@ enum ProtocolErrorCode : ushort {
   PayloadTooLarge = 9,
   RateLimited = 10,
   Internal = 11
+}
+
+enum ToolCallRejectionCode : ubyte {
+  Unknown = 0,
+  Stale = 1,
+  Unauthorized = 2,
+  InvalidArguments = 3,
+  PolicyDenied = 4
 }
 
 table HelloPayload {
@@ -170,6 +190,63 @@ table ProtocolErrorPayload {
   message:string;
 }
 
+table InferenceRequestedPayload {
+  capability:string;
+  deadline_ms:ulong;
+  input:[ubyte];
+}
+
+table InferenceAcceptedPayload {
+  queued_position:uint;
+}
+
+table InferenceProgressPayload {
+  percent:ubyte;
+}
+
+table InferenceStreamChunkPayload {
+  sequence:uint;
+  chunk:[ubyte];
+  is_final:bool;
+}
+
+table InferenceCompletedPayload {
+  result:[ubyte];
+}
+
+table InferenceFailedPayload {
+  reason:string;
+}
+
+table InferenceCancelledPayload {
+  reason:string;
+}
+
+table InferenceExpiredPayload {
+  reason:string;
+}
+
+table ToolCallProposedPayload {
+  tool_id:string;
+  tool_version:uint;
+  arguments:[ubyte];
+  expected_revision:ulong;
+}
+
+table ToolCallAcceptedPayload {
+  tool_id:string;
+}
+
+table ToolCallRejectedPayload {
+  code:ToolCallRejectionCode = Unknown;
+  reason:string;
+}
+
+table ToolCallCompletedPayload {
+  new_revision:ulong;
+  result:[ubyte];
+}
+
 // ControlPayload is used only by the typed control messages. EntityState,
 // ReliableEvent, and Snapshot carry their application-defined bytes in
 // Envelope.payload with a non-zero payload_type_id.
@@ -190,7 +267,19 @@ union ControlPayload {
   SpaceTransitionPayload = 14,
   PingPayload = 15,
   PongPayload = 16,
-  ProtocolErrorPayload = 17
+  ProtocolErrorPayload = 17,
+  InferenceRequestedPayload = 18,
+  InferenceAcceptedPayload = 19,
+  InferenceProgressPayload = 20,
+  InferenceStreamChunkPayload = 21,
+  InferenceCompletedPayload = 22,
+  InferenceFailedPayload = 23,
+  InferenceCancelledPayload = 24,
+  InferenceExpiredPayload = 25,
+  ToolCallProposedPayload = 26,
+  ToolCallAcceptedPayload = 27,
+  ToolCallRejectedPayload = 28,
+  ToolCallCompletedPayload = 29
 }
 
 table Envelope {

@@ -54,9 +54,9 @@ The Quinn adapter now maps `UnreliableSequenced` and `BestEffortEvent` delivery 
 
 ### Milestone 5 — Minimal inference plane
 
-**Status: Deferred.**
+**Status: Completed.**
 
-Add the optional capability registry, coordinator, bounded provider queues, scoped context, deadlines, budgets, cancellation, lifecycle messages, deterministic fake provider, and deterministic tool gateway. Demonstrate one AI identity, a read-only diagnostic tool, and rejection of a stale state-changing proposal. Exit by proving that disabling inference removes provider activity without changing relay tests or benchmark behavior.
+Added an optional, adjacent inference plane that never enters `signalweave-core` or `signalweave-protocol` internals beyond twelve additive wire message kinds (`InferenceRequested`…`InferenceExpired`, `ToolCallProposed`…`ToolCallCompleted`, MessageKind 21–32). The coordinator (`signalweave-inference-coordinator`) runs one AI identity as an ordinary authenticated core connection, holds a bounded per-request-queue (`tokio::sync::Semaphore`), and drives its provider (`signalweave-inference-core::Provider`) and tool gateway (`signalweave-inference-tools`, ADR 0010) without any core or protocol-crate changes; two small generic additions to `signalweave-transport` (`WorkerHandle::broadcast_to_space`, `WorkerHandle::send_to_connection`) reuse the existing entity-lifecycle fan-out plumbing to deliver these messages. The deterministic fake provider (`signalweave-inference-test-provider`) drives three demonstrations with no paid service: a full AI conversation round trip, a read-only diagnostic tool call, and rejection of a deliberately stale state-changing tool proposal (checked via a per-tool revision counter, not a new core `AuthorityPolicy`). The plane is disabled by default (`ServerConfig::inference_enabled = false`, `SIGNALWEAVE_INFERENCE_ENABLED`); the entire pre-existing WebSocket/QUIC/WebTransport relay test suite passes unmodified through that disabled path, proving the plane's absence changes nothing. Real hosted/local HTTP providers, a dedicated `signalweave-inference-memory` crate, and multi-identity config-driven provisioning remain deferred as explicitly out of scope for this minimal slice.
 
 ### Milestone 6 — Cloud-ready staging plan
 

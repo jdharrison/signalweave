@@ -18,9 +18,14 @@ path = "src/main.rs"
 [dependencies]
 signalweave-core.workspace = true
 signalweave-protocol.workspace = true
+signalweave-transport.workspace = true
 signalweave-transport-websocket.workspace = true
 signalweave-transport-quic.workspace = true
 signalweave-transport-webtransport.workspace = true
+signalweave-inference-core.workspace = true
+signalweave-inference-tools.workspace = true
+signalweave-inference-test-provider.workspace = true
+signalweave-inference-coordinator.workspace = true
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true

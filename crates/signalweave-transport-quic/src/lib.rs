@@ -17,8 +17,8 @@ use signalweave_protocol::{
     MessagePayload, PROTOCOL_VERSION, ProtocolErrorCode,
 };
 use signalweave_transport::{
-    MAX_FRAME_BYTES, MAX_PAYLOAD_BYTES, WorkerHandle, handle_authenticated, outbound_envelope,
-    send_envelope, send_error,
+    MAX_FRAME_BYTES, MAX_PAYLOAD_BYTES, UnroutedControl, WorkerHandle, handle_authenticated,
+    outbound_envelope, send_envelope, send_error,
 };
 use tokio::sync::{Semaphore, mpsc};
 use tracing::{debug, trace};
@@ -38,6 +38,9 @@ pub struct QuicConfig {
     pub server_name: Arc<str>,
     /// Server version reported in the protocol capabilities response.
     pub server_version: Arc<str>,
+    /// Where client-sent inference control messages are forwarded when the inference plane
+    /// is enabled. `None` means the plane is disabled and those messages are rejected.
+    pub inference_sink: Option<mpsc::Sender<UnroutedControl>>,
 }
 
 impl QuicConfig {
@@ -47,6 +50,7 @@ impl QuicConfig {
             worker,
             server_name: Arc::from("signalweave"),
             server_version: Arc::from(env!("CARGO_PKG_VERSION")),
+            inference_sink: None,
         }
     }
 }
@@ -193,7 +197,13 @@ pub async fn serve_connection(connection: Connection, config: QuicConfig) {
                         }
                         match codec.decode(&bytes) {
                             Ok(envelope) => {
-                                if handle_authenticated(&config.worker, core_connection, envelope, &write_sender).await.is_err() {
+                                if handle_authenticated(
+                                    &config.worker,
+                                    core_connection,
+                                    envelope,
+                                    &write_sender,
+                                    config.inference_sink.as_ref(),
+                                ).await.is_err() {
                                     break;
                                 }
                             }
@@ -225,7 +235,13 @@ pub async fn serve_connection(connection: Connection, config: QuicConfig) {
                         .await
                         .map(|()| authenticated = true)
                 } else {
-                    handle_authenticated(&config.worker, core_connection, envelope, &write_sender).await
+                    handle_authenticated(
+                        &config.worker,
+                        core_connection,
+                        envelope,
+                        &write_sender,
+                        config.inference_sink.as_ref(),
+                    ).await
                 };
                 if result.is_err() {
                     break;

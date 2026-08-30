@@ -5,10 +5,13 @@ use flatbuffers::{FlatBufferBuilder, UnionWIPOffset, WIPOffset};
 use crate::generated::signalweave::protocol::v1 as wire;
 use crate::{
     Authenticate, Authenticated, AuthenticationScheme, Capabilities, ControlPayload, DeliveryClass,
-    EntityEntered, EntityLeaveReason, EntityLeft, Envelope, FILE_IDENTIFIER, Hello, JoinSession,
-    LeaveSession, MessageKind, MessagePayload, OpaquePayload, PROTOCOL_VERSION, Ping, Pong,
-    ProtocolError, ProtocolErrorCode, SnapshotRequest, SpaceTransition, SubscribeSpace,
-    SubscriptionAccepted, SubscriptionRejected, SubscriptionRejectionCode, UnsubscribeSpace,
+    EntityEntered, EntityLeaveReason, EntityLeft, Envelope, FILE_IDENTIFIER, Hello,
+    InferenceAccepted, InferenceCancelled, InferenceCompleted, InferenceExpired, InferenceFailed,
+    InferenceProgress, InferenceRequested, InferenceStreamChunk, JoinSession, LeaveSession,
+    MessageKind, MessagePayload, OpaquePayload, PROTOCOL_VERSION, Ping, Pong, ProtocolError,
+    ProtocolErrorCode, SnapshotRequest, SpaceTransition, SubscribeSpace, SubscriptionAccepted,
+    SubscriptionRejected, SubscriptionRejectionCode, ToolCallAccepted, ToolCallCompleted,
+    ToolCallProposed, ToolCallRejected, ToolCallRejectionCode, UnsubscribeSpace,
 };
 
 const SIZE_PREFIX_LEN: usize = 4;
@@ -636,6 +639,171 @@ fn encode_control(
                 offset.as_union_value(),
             )
         }
+        ControlPayload::InferenceRequested(value) => {
+            let capability = builder.create_string(&value.capability);
+            let input = builder.create_vector(&value.input);
+            let offset = wire::InferenceRequestedPayload::create(
+                builder,
+                &wire::InferenceRequestedPayloadArgs {
+                    capability: Some(capability),
+                    deadline_ms: value.deadline_ms,
+                    input: Some(input),
+                },
+            );
+            (
+                wire::ControlPayload::InferenceRequestedPayload,
+                offset.as_union_value(),
+            )
+        }
+        ControlPayload::InferenceAccepted(value) => {
+            let offset = wire::InferenceAcceptedPayload::create(
+                builder,
+                &wire::InferenceAcceptedPayloadArgs {
+                    queued_position: value.queued_position,
+                },
+            );
+            (
+                wire::ControlPayload::InferenceAcceptedPayload,
+                offset.as_union_value(),
+            )
+        }
+        ControlPayload::InferenceProgress(value) => {
+            let offset = wire::InferenceProgressPayload::create(
+                builder,
+                &wire::InferenceProgressPayloadArgs {
+                    percent: value.percent,
+                },
+            );
+            (
+                wire::ControlPayload::InferenceProgressPayload,
+                offset.as_union_value(),
+            )
+        }
+        ControlPayload::InferenceStreamChunk(value) => {
+            let chunk = builder.create_vector(&value.chunk);
+            let offset = wire::InferenceStreamChunkPayload::create(
+                builder,
+                &wire::InferenceStreamChunkPayloadArgs {
+                    sequence: value.sequence,
+                    chunk: Some(chunk),
+                    is_final: value.is_final,
+                },
+            );
+            (
+                wire::ControlPayload::InferenceStreamChunkPayload,
+                offset.as_union_value(),
+            )
+        }
+        ControlPayload::InferenceCompleted(value) => {
+            let result = builder.create_vector(&value.result);
+            let offset = wire::InferenceCompletedPayload::create(
+                builder,
+                &wire::InferenceCompletedPayloadArgs {
+                    result: Some(result),
+                },
+            );
+            (
+                wire::ControlPayload::InferenceCompletedPayload,
+                offset.as_union_value(),
+            )
+        }
+        ControlPayload::InferenceFailed(value) => {
+            let reason = builder.create_string(&value.reason);
+            let offset = wire::InferenceFailedPayload::create(
+                builder,
+                &wire::InferenceFailedPayloadArgs {
+                    reason: Some(reason),
+                },
+            );
+            (
+                wire::ControlPayload::InferenceFailedPayload,
+                offset.as_union_value(),
+            )
+        }
+        ControlPayload::InferenceCancelled(value) => {
+            let reason = builder.create_string(&value.reason);
+            let offset = wire::InferenceCancelledPayload::create(
+                builder,
+                &wire::InferenceCancelledPayloadArgs {
+                    reason: Some(reason),
+                },
+            );
+            (
+                wire::ControlPayload::InferenceCancelledPayload,
+                offset.as_union_value(),
+            )
+        }
+        ControlPayload::InferenceExpired(value) => {
+            let reason = builder.create_string(&value.reason);
+            let offset = wire::InferenceExpiredPayload::create(
+                builder,
+                &wire::InferenceExpiredPayloadArgs {
+                    reason: Some(reason),
+                },
+            );
+            (
+                wire::ControlPayload::InferenceExpiredPayload,
+                offset.as_union_value(),
+            )
+        }
+        ControlPayload::ToolCallProposed(value) => {
+            let tool_id = builder.create_string(&value.tool_id);
+            let arguments = builder.create_vector(&value.arguments);
+            let offset = wire::ToolCallProposedPayload::create(
+                builder,
+                &wire::ToolCallProposedPayloadArgs {
+                    tool_id: Some(tool_id),
+                    tool_version: value.tool_version,
+                    arguments: Some(arguments),
+                    expected_revision: value.expected_revision,
+                },
+            );
+            (
+                wire::ControlPayload::ToolCallProposedPayload,
+                offset.as_union_value(),
+            )
+        }
+        ControlPayload::ToolCallAccepted(value) => {
+            let tool_id = builder.create_string(&value.tool_id);
+            let offset = wire::ToolCallAcceptedPayload::create(
+                builder,
+                &wire::ToolCallAcceptedPayloadArgs {
+                    tool_id: Some(tool_id),
+                },
+            );
+            (
+                wire::ControlPayload::ToolCallAcceptedPayload,
+                offset.as_union_value(),
+            )
+        }
+        ControlPayload::ToolCallRejected(value) => {
+            let reason = builder.create_string(&value.reason);
+            let offset = wire::ToolCallRejectedPayload::create(
+                builder,
+                &wire::ToolCallRejectedPayloadArgs {
+                    code: wire::ToolCallRejectionCode(value.code.value()),
+                    reason: Some(reason),
+                },
+            );
+            (
+                wire::ControlPayload::ToolCallRejectedPayload,
+                offset.as_union_value(),
+            )
+        }
+        ControlPayload::ToolCallCompleted(value) => {
+            let result = builder.create_vector(&value.result);
+            let offset = wire::ToolCallCompletedPayload::create(
+                builder,
+                &wire::ToolCallCompletedPayloadArgs {
+                    new_revision: value.new_revision,
+                    result: Some(result),
+                },
+            );
+            (
+                wire::ControlPayload::ToolCallCompletedPayload,
+                offset.as_union_value(),
+            )
+        }
     }
 }
 
@@ -865,6 +1033,172 @@ fn decode_control(
                         value: u64::from(value.related_message_kind().0),
                     })?,
                 message: checked_control_string(codec, value.message())?,
+            })
+        }
+        MessageKind::InferenceRequested => {
+            require_control(
+                envelope,
+                kind,
+                wire::ControlPayload::InferenceRequestedPayload,
+            )?;
+            let value = envelope
+                .control_as_inference_requested_payload()
+                .ok_or_else(|| control_mismatch(envelope, kind))?;
+            ControlPayload::InferenceRequested(InferenceRequested {
+                capability: checked_control_string(codec, value.capability())?,
+                deadline_ms: value.deadline_ms(),
+                input: checked_control_vector(codec, value.input())?,
+            })
+        }
+        MessageKind::InferenceAccepted => {
+            require_control(
+                envelope,
+                kind,
+                wire::ControlPayload::InferenceAcceptedPayload,
+            )?;
+            let value = envelope
+                .control_as_inference_accepted_payload()
+                .ok_or_else(|| control_mismatch(envelope, kind))?;
+            ControlPayload::InferenceAccepted(InferenceAccepted {
+                queued_position: value.queued_position(),
+            })
+        }
+        MessageKind::InferenceProgress => {
+            require_control(
+                envelope,
+                kind,
+                wire::ControlPayload::InferenceProgressPayload,
+            )?;
+            let value = envelope
+                .control_as_inference_progress_payload()
+                .ok_or_else(|| control_mismatch(envelope, kind))?;
+            ControlPayload::InferenceProgress(InferenceProgress {
+                percent: value.percent(),
+            })
+        }
+        MessageKind::InferenceStreamChunk => {
+            require_control(
+                envelope,
+                kind,
+                wire::ControlPayload::InferenceStreamChunkPayload,
+            )?;
+            let value = envelope
+                .control_as_inference_stream_chunk_payload()
+                .ok_or_else(|| control_mismatch(envelope, kind))?;
+            ControlPayload::InferenceStreamChunk(InferenceStreamChunk {
+                sequence: value.sequence(),
+                chunk: checked_control_vector(codec, value.chunk())?,
+                is_final: value.is_final(),
+            })
+        }
+        MessageKind::InferenceCompleted => {
+            require_control(
+                envelope,
+                kind,
+                wire::ControlPayload::InferenceCompletedPayload,
+            )?;
+            let value = envelope
+                .control_as_inference_completed_payload()
+                .ok_or_else(|| control_mismatch(envelope, kind))?;
+            ControlPayload::InferenceCompleted(InferenceCompleted {
+                result: checked_control_vector(codec, value.result())?,
+            })
+        }
+        MessageKind::InferenceFailed => {
+            require_control(envelope, kind, wire::ControlPayload::InferenceFailedPayload)?;
+            let value = envelope
+                .control_as_inference_failed_payload()
+                .ok_or_else(|| control_mismatch(envelope, kind))?;
+            ControlPayload::InferenceFailed(InferenceFailed {
+                reason: checked_control_string(codec, value.reason())?,
+            })
+        }
+        MessageKind::InferenceCancelled => {
+            require_control(
+                envelope,
+                kind,
+                wire::ControlPayload::InferenceCancelledPayload,
+            )?;
+            let value = envelope
+                .control_as_inference_cancelled_payload()
+                .ok_or_else(|| control_mismatch(envelope, kind))?;
+            ControlPayload::InferenceCancelled(InferenceCancelled {
+                reason: checked_control_string(codec, value.reason())?,
+            })
+        }
+        MessageKind::InferenceExpired => {
+            require_control(
+                envelope,
+                kind,
+                wire::ControlPayload::InferenceExpiredPayload,
+            )?;
+            let value = envelope
+                .control_as_inference_expired_payload()
+                .ok_or_else(|| control_mismatch(envelope, kind))?;
+            ControlPayload::InferenceExpired(InferenceExpired {
+                reason: checked_control_string(codec, value.reason())?,
+            })
+        }
+        MessageKind::ToolCallProposed => {
+            require_control(
+                envelope,
+                kind,
+                wire::ControlPayload::ToolCallProposedPayload,
+            )?;
+            let value = envelope
+                .control_as_tool_call_proposed_payload()
+                .ok_or_else(|| control_mismatch(envelope, kind))?;
+            ControlPayload::ToolCallProposed(ToolCallProposed {
+                tool_id: checked_control_string(codec, value.tool_id())?,
+                tool_version: value.tool_version(),
+                arguments: checked_control_vector(codec, value.arguments())?,
+                expected_revision: value.expected_revision(),
+            })
+        }
+        MessageKind::ToolCallAccepted => {
+            require_control(
+                envelope,
+                kind,
+                wire::ControlPayload::ToolCallAcceptedPayload,
+            )?;
+            let value = envelope
+                .control_as_tool_call_accepted_payload()
+                .ok_or_else(|| control_mismatch(envelope, kind))?;
+            ControlPayload::ToolCallAccepted(ToolCallAccepted {
+                tool_id: checked_control_string(codec, value.tool_id())?,
+            })
+        }
+        MessageKind::ToolCallRejected => {
+            require_control(
+                envelope,
+                kind,
+                wire::ControlPayload::ToolCallRejectedPayload,
+            )?;
+            let value = envelope
+                .control_as_tool_call_rejected_payload()
+                .ok_or_else(|| control_mismatch(envelope, kind))?;
+            ControlPayload::ToolCallRejected(ToolCallRejected {
+                code: ToolCallRejectionCode::from_wire(value.code().0).ok_or(
+                    CodecError::UnsupportedEnumValue {
+                        name: "tool call rejection code",
+                        value: u64::from(value.code().0),
+                    },
+                )?,
+                reason: checked_control_string(codec, value.reason())?,
+            })
+        }
+        MessageKind::ToolCallCompleted => {
+            require_control(
+                envelope,
+                kind,
+                wire::ControlPayload::ToolCallCompletedPayload,
+            )?;
+            let value = envelope
+                .control_as_tool_call_completed_payload()
+                .ok_or_else(|| control_mismatch(envelope, kind))?;
+            ControlPayload::ToolCallCompleted(ToolCallCompleted {
+                new_revision: value.new_revision(),
+                result: checked_control_vector(codec, value.result())?,
             })
         }
         MessageKind::Unknown

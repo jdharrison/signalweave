@@ -51,6 +51,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-trait"
+version = "0.1.92"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.4",
+]
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1394,6 +1405,47 @@ name = "signalweave-core"
 version = "0.1.0"
 
 [[package]]
+name = "signalweave-inference-coordinator"
+version = "0.1.0"
+dependencies = [
+ "signalweave-core",
+ "signalweave-inference-core",
+ "signalweave-inference-tools",
+ "signalweave-protocol",
+ "signalweave-transport",
+ "tokio",
+]
+
+[[package]]
+name = "signalweave-inference-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "signalweave-core",
+]
+
+[[package]]
+name = "signalweave-inference-test-provider"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "signalweave-core",
+ "signalweave-inference-core",
+ "tokio",
+]
+
+[[package]]
+name = "signalweave-inference-tools"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "signalweave-core",
+ "signalweave-inference-core",
+ "signalweave-transport",
+ "tokio",
+]
+
+[[package]]
 name = "signalweave-loadtest"
 version = "0.1.0"
 dependencies = [
@@ -1420,7 +1472,12 @@ dependencies = [
  "serde",
  "signalweave-client-rust",
  "signalweave-core",
+ "signalweave-inference-coordinator",
+ "signalweave-inference-core",
+ "signalweave-inference-test-provider",
+ "signalweave-inference-tools",
  "signalweave-protocol",
+ "signalweave-transport",
  "signalweave-transport-quic",
  "signalweave-transport-websocket",
  "signalweave-transport-webtransport",

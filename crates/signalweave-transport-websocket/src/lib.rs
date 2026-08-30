@@ -24,6 +24,9 @@ pub struct WebSocketConfig {
     pub worker: WorkerHandle,
     pub server_name: Arc<str>,
     pub server_version: Arc<str>,
+    /// Where client-sent inference control messages are forwarded when the inference plane
+    /// is enabled. `None` means the plane is disabled and those messages are rejected.
+    pub inference_sink: Option<mpsc::Sender<UnroutedControl>>,
 }
 
 impl WebSocketConfig {
@@ -33,6 +36,7 @@ impl WebSocketConfig {
             worker,
             server_name: Arc::from("signalweave"),
             server_version: Arc::from(env!("CARGO_PKG_VERSION")),
+            inference_sink: None,
         }
     }
 }
@@ -232,7 +236,14 @@ pub async fn serve_connection(socket: WebSocket, config: WebSocketConfig) {
                 }
             }
         } else {
-            handle_authenticated(&config.worker, connection, envelope, &write_sender).await
+            handle_authenticated(
+                &config.worker,
+                connection,
+                envelope,
+                &write_sender,
+                config.inference_sink.as_ref(),
+            )
+            .await
         };
         if result.is_err() {
             break;

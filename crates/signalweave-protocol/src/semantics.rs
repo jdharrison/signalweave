@@ -1,6 +1,7 @@
 use crate::{
     Authenticate, Capabilities, CodecError, ControlPayload, DeliveryClass, Envelope, Hello,
-    MessageKind, MessagePayload, ProtocolError, SnapshotRequest, SpaceTransition,
+    InferenceRequested, MessageKind, MessagePayload, ProtocolError, SnapshotRequest,
+    SpaceTransition, ToolCallProposed,
 };
 
 pub(crate) fn validate(envelope: &Envelope) -> Result<(), CodecError> {
@@ -28,6 +29,7 @@ pub(crate) fn validate(envelope: &Envelope) -> Result<(), CodecError> {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn validate_control(envelope: &Envelope, control: &ControlPayload) -> Result<(), CodecError> {
     match control {
         ControlPayload::Hello(value) => {
@@ -123,7 +125,78 @@ fn validate_control(envelope: &Envelope, control: &ControlPayload) -> Result<(),
             require(value.nonce, envelope, "pong nonce must be non-zero")
         }
         ControlPayload::ProtocolError(value) => validate_protocol_error(envelope, value),
+        inference @ (ControlPayload::InferenceRequested(_)
+        | ControlPayload::InferenceAccepted(_)
+        | ControlPayload::InferenceProgress(_)
+        | ControlPayload::InferenceStreamChunk(_)
+        | ControlPayload::InferenceCompleted(_)
+        | ControlPayload::InferenceFailed(_)
+        | ControlPayload::InferenceCancelled(_)
+        | ControlPayload::InferenceExpired(_)
+        | ControlPayload::ToolCallProposed(_)
+        | ControlPayload::ToolCallAccepted(_)
+        | ControlPayload::ToolCallRejected(_)
+        | ControlPayload::ToolCallCompleted(_)) => validate_inference_control(envelope, inference),
     }
+}
+
+fn validate_inference_control(
+    envelope: &Envelope,
+    control: &ControlPayload,
+) -> Result<(), CodecError> {
+    require_space_scope(envelope, false, true)?;
+    match control {
+        ControlPayload::InferenceRequested(value) => validate_inference_requested(envelope, value),
+        ControlPayload::InferenceProgress(value) => {
+            if value.percent > 100 {
+                return invalid(envelope, "inference progress percent cannot exceed 100");
+            }
+            Ok(())
+        }
+        ControlPayload::InferenceFailed(value) => {
+            if value.reason.is_empty() {
+                return invalid(envelope, "inference failure reason cannot be empty");
+            }
+            Ok(())
+        }
+        ControlPayload::ToolCallProposed(value) => validate_tool_call_proposed(envelope, value),
+        ControlPayload::ToolCallAccepted(value) => {
+            if value.tool_id.is_empty() {
+                return invalid(envelope, "tool_id cannot be empty");
+            }
+            Ok(())
+        }
+        ControlPayload::ToolCallRejected(value) => {
+            if value.code == crate::ToolCallRejectionCode::Unknown {
+                return invalid(envelope, "tool call rejection code cannot be Unknown");
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn validate_inference_requested(
+    envelope: &Envelope,
+    value: &InferenceRequested,
+) -> Result<(), CodecError> {
+    if value.capability.is_empty() {
+        return invalid(envelope, "inference capability cannot be empty");
+    }
+    Ok(())
+}
+
+fn validate_tool_call_proposed(
+    envelope: &Envelope,
+    value: &ToolCallProposed,
+) -> Result<(), CodecError> {
+    if value.tool_id.is_empty() {
+        return invalid(envelope, "tool_id cannot be empty");
+    }
+    if value.tool_version == 0 {
+        return invalid(envelope, "tool_version must be non-zero");
+    }
+    Ok(())
 }
 
 fn validate_hello(envelope: &Envelope, value: &Hello) -> Result<(), CodecError> {
@@ -260,6 +333,9 @@ fn validate_delivery(envelope: &Envelope) -> Result<(), CodecError> {
         ),
         MessageKind::Ping | MessageKind::Pong => {
             envelope.delivery_class == DeliveryClass::ReliableUnordered
+        }
+        MessageKind::InferenceProgress | MessageKind::InferenceStreamChunk => {
+            envelope.delivery_class == DeliveryClass::BestEffortEvent
         }
         MessageKind::Unknown => false,
         _ => envelope.delivery_class == DeliveryClass::ReliableOrdered,

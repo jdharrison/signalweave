@@ -25,6 +25,7 @@ pub const MAX_PAYLOAD_BYTES: u32 = 262_144;
 pub enum TransportError {
     WorkerUnavailable,
     Core(CoreError),
+    UnknownConnection,
 }
 
 impl std::fmt::Display for TransportError {
@@ -32,6 +33,9 @@ impl std::fmt::Display for TransportError {
         match self {
             Self::WorkerUnavailable => formatter.write_str("core worker is unavailable"),
             Self::Core(error) => write!(formatter, "core error: {error:?}"),
+            Self::UnknownConnection => {
+                formatter.write_str("connection is not registered for direct delivery")
+            }
         }
     }
 }
@@ -58,6 +62,17 @@ enum WorkerRequest {
         connection: ConnectionId,
         space: SpaceKey,
         reply: oneshot::Sender<()>,
+    },
+    BroadcastToSpace {
+        space: SpaceKey,
+        envelope: Envelope,
+        exclude: Option<ConnectionId>,
+        reply: oneshot::Sender<()>,
+    },
+    SendToConnection {
+        connection: ConnectionId,
+        envelope: Envelope,
+        reply: oneshot::Sender<Result<(), TransportError>>,
     },
 }
 
@@ -90,6 +105,15 @@ enum LifecycleAction {
     TransportLost {
         connection: ConnectionId,
     },
+}
+
+/// A control envelope `handle_authenticated` does not itself implement, handed off to an
+/// optional adjacent plane (e.g. the inference coordinator) rather than rejected outright.
+/// `signalweave-transport` has no knowledge of what consumes these.
+#[derive(Debug)]
+pub struct UnroutedControl {
+    pub connection: ConnectionId,
+    pub envelope: Envelope,
 }
 
 /// Cloneable bounded command client for the single Signalweave core owner.
@@ -173,6 +197,49 @@ impl WorkerHandle {
             .map_err(|_| TransportError::WorkerUnavailable)?;
         receive.await.map_err(|_| TransportError::WorkerUnavailable)
     }
+
+    /// Deliver `envelope` directly to every connection currently subscribed to `space`,
+    /// bypassing the per-connection outbound queue. Mirrors the delivery path already used
+    /// for `EntityEntered`/`EntityLeft`/`SpaceTransition`, generalized for any envelope.
+    pub async fn broadcast_to_space(
+        &self,
+        space: SpaceKey,
+        envelope: Envelope,
+        exclude: Option<ConnectionId>,
+    ) -> Result<(), TransportError> {
+        let (reply, receive) = oneshot::channel();
+        self.sender
+            .send(WorkerRequest::BroadcastToSpace {
+                space,
+                envelope,
+                exclude,
+                reply,
+            })
+            .await
+            .map_err(|_| TransportError::WorkerUnavailable)?;
+        receive.await.map_err(|_| TransportError::WorkerUnavailable)
+    }
+
+    /// Deliver `envelope` directly to a single registered connection, bypassing the
+    /// per-connection outbound queue. The connection must have called `register_lifecycle`.
+    pub async fn send_to_connection(
+        &self,
+        connection: ConnectionId,
+        envelope: Envelope,
+    ) -> Result<(), TransportError> {
+        let (reply, receive) = oneshot::channel();
+        self.sender
+            .send(WorkerRequest::SendToConnection {
+                connection,
+                envelope,
+                reply,
+            })
+            .await
+            .map_err(|_| TransportError::WorkerUnavailable)?;
+        receive
+            .await
+            .map_err(|_| TransportError::WorkerUnavailable)?
+    }
 }
 
 /// Spawn the bounded, single-owner core command worker.
@@ -244,6 +311,36 @@ where
                 } => {
                     subscriptions.entry(connection).or_default().insert(space);
                     let _ = reply.send(());
+                }
+                WorkerRequest::BroadcastToSpace {
+                    space,
+                    envelope,
+                    exclude,
+                    reply,
+                } => {
+                    distribute_to_space_excluding(
+                        &mut worker,
+                        &mut recipients,
+                        &mut subscriptions,
+                        space,
+                        &envelope,
+                        exclude,
+                    );
+                    let _ = reply.send(());
+                }
+                WorkerRequest::SendToConnection {
+                    connection,
+                    envelope,
+                    reply,
+                } => {
+                    let result = deliver_to_connection(
+                        &mut worker,
+                        &mut recipients,
+                        &mut subscriptions,
+                        connection,
+                        &envelope,
+                    );
+                    let _ = reply.send(result);
                 }
             }
         }
@@ -473,20 +570,55 @@ fn distribute_to_space_excluding<A>(
         }
     }
     for connection in disconnected {
-        recipients.remove(&connection);
-        subscriptions.remove(&connection);
-        let _ = worker.handle(Command::DrainOutbound { connection });
-        if let Ok(CommandResult::Disconnected(summary)) =
-            worker.handle(Command::TransportLost { connection })
-        {
-            distribute_removed_entities(
-                worker,
-                recipients,
-                subscriptions,
-                &summary,
-                EntityLeaveReason::Disconnected,
-            );
-        }
+        cleanup_dead_connection(worker, recipients, subscriptions, connection);
+    }
+}
+
+/// Deliver `envelope` directly to a single registered connection.
+fn deliver_to_connection<A>(
+    worker: &mut TransportIndependentWorker<A>,
+    recipients: &mut BTreeMap<ConnectionId, LifecycleRecipient>,
+    subscriptions: &mut BTreeMap<ConnectionId, BTreeSet<SpaceKey>>,
+    connection: ConnectionId,
+    envelope: &Envelope,
+) -> Result<(), TransportError>
+where
+    A: Authenticator,
+{
+    let Some(recipient) = recipients.get(&connection) else {
+        return Err(TransportError::UnknownConnection);
+    };
+    if recipient.sender.try_send(envelope.clone()).is_ok() {
+        return Ok(());
+    }
+    let _ = recipient.shutdown.try_send(());
+    cleanup_dead_connection(worker, recipients, subscriptions, connection);
+    Err(TransportError::UnknownConnection)
+}
+
+/// Remove a connection whose write channel has failed and run the same disconnect cleanup
+/// and fan-out as an explicit `TransportLost`.
+fn cleanup_dead_connection<A>(
+    worker: &mut TransportIndependentWorker<A>,
+    recipients: &mut BTreeMap<ConnectionId, LifecycleRecipient>,
+    subscriptions: &mut BTreeMap<ConnectionId, BTreeSet<SpaceKey>>,
+    connection: ConnectionId,
+) where
+    A: Authenticator,
+{
+    recipients.remove(&connection);
+    subscriptions.remove(&connection);
+    let _ = worker.handle(Command::DrainOutbound { connection });
+    if let Ok(CommandResult::Disconnected(summary)) =
+        worker.handle(Command::TransportLost { connection })
+    {
+        distribute_removed_entities(
+            worker,
+            recipients,
+            subscriptions,
+            &summary,
+            EntityLeaveReason::Disconnected,
+        );
     }
 }
 
@@ -543,10 +675,25 @@ pub async fn handle_authenticated(
     connection: ConnectionId,
     envelope: Envelope,
     write_sender: &mpsc::Sender<Envelope>,
+    inference_sink: Option<&mpsc::Sender<UnroutedControl>>,
 ) -> Result<(), ()> {
     use signalweave_core::{
         ChannelId, NamespaceId, SessionId, SessionKey, SpaceEpoch, SpaceId, SpaceKey,
     };
+    if let Some(sink) = inference_sink
+        && matches!(
+            envelope.message,
+            MessagePayload::Control(
+                ControlPayload::InferenceRequested(_) | ControlPayload::InferenceCancelled(_)
+            )
+        )
+    {
+        let _ = sink.try_send(UnroutedControl {
+            connection,
+            envelope,
+        });
+        return Ok(());
+    }
     let session = SessionKey {
         namespace: NamespaceId::new(envelope.namespace_id),
         session: SessionId::new(envelope.session_id),
@@ -620,7 +767,9 @@ pub async fn handle_authenticated(
             Err(error) => {
                 let code = match &error {
                     TransportError::Core(core_error) => core_error_code(core_error),
-                    TransportError::WorkerUnavailable => ProtocolErrorCode::Internal,
+                    TransportError::WorkerUnavailable | TransportError::UnknownConnection => {
+                        ProtocolErrorCode::Internal
+                    }
                 };
                 send_error(
                     write_sender,
@@ -699,7 +848,9 @@ pub async fn handle_authenticated(
         Err(error) => {
             let code = match &error {
                 TransportError::Core(core_error) => core_error_code(core_error),
-                TransportError::WorkerUnavailable => ProtocolErrorCode::Internal,
+                TransportError::WorkerUnavailable | TransportError::UnknownConnection => {
+                    ProtocolErrorCode::Internal
+                }
             };
             send_error(
                 write_sender,

@@ -10,8 +10,8 @@ use std::time::Duration;
 use futures_util::{SinkExt, StreamExt};
 use signalweave_protocol::{
     Authenticate, AuthenticationScheme, Codec, CodecError, ControlPayload, DeliveryClass, Envelope,
-    Hello, JoinSession, MessagePayload, OpaquePayload, PROTOCOL_VERSION, ProtocolError,
-    SnapshotRequest, SpaceTransition, SubscribeSpace,
+    Hello, InferenceRequested, JoinSession, MessagePayload, OpaquePayload, PROTOCOL_VERSION,
+    ProtocolError, SnapshotRequest, SpaceTransition, SubscribeSpace,
 };
 use tokio_tungstenite::{MaybeTlsStream, connect_async, tungstenite::Message};
 use tracing::{debug, trace};
@@ -375,6 +375,42 @@ impl Client {
                 type_id,
                 bytes: payload,
             }),
+        })
+        .await
+    }
+
+    /// Send an `InferenceRequested` control envelope addressed to the AI identity's entity.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn request_inference(
+        &mut self,
+        namespace_id: u64,
+        session_id: u64,
+        space_id: u64,
+        space_epoch: u64,
+        ai_entity_id: u64,
+        capability: &str,
+        deadline_ms: u64,
+        input: Vec<u8>,
+    ) -> Result<(), ClientError> {
+        self.send_envelope(&Envelope {
+            protocol_version: PROTOCOL_VERSION,
+            delivery_class: DeliveryClass::ReliableOrdered,
+            namespace_id,
+            session_id,
+            space_id,
+            channel_id: None,
+            entity_id: Some(ai_entity_id),
+            space_epoch,
+            server_tick: 0,
+            sender_sequence: 0,
+            correlation_id: None,
+            message: MessagePayload::Control(ControlPayload::InferenceRequested(
+                InferenceRequested {
+                    capability: capability.to_owned(),
+                    deadline_ms,
+                    input,
+                },
+            )),
         })
         .await
     }

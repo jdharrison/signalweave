@@ -68,7 +68,7 @@ Crates added in future milestones (do not create empty scaffolding):
 | 2 — WebSocket server + clients | **Complete** — WebSocket vertical slice, presence/transition lifecycle, Rust client, and TS live-frame decode validation exist |
 | 3 — Interest management + load runner | **Complete** — bounded 2D/3D grid routing and a bounded local load runner exist; consumer-specific proxy/fidelity policy remains deferred |
 | 4 — QUIC + WebTransport | **Complete** — native QUIC and WebTransport adapters with reliable streams and datagram delivery-class mapping; real-socket conformance coverage for both |
-| 5 — Inference plane | Deferred |
+| 5 — Inference plane | **Complete** — adjacent optional coordinator, deterministic tool gateway, and deterministic fake provider exist; disabled by default, zero core/protocol dependency beyond 12 additive message kinds |
 | 6 — Cloud staging plan | Deferred (approval-gated) |
 | 7 — DARK FOREST + portfolio examples | Deferred |
 

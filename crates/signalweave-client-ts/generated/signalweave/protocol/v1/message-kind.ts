@@ -23,5 +23,17 @@ export enum MessageKind {
   SpaceTransition = 17,
   Ping = 18,
   Pong = 19,
-  ProtocolError = 20
+  ProtocolError = 20,
+  InferenceRequested = 21,
+  InferenceAccepted = 22,
+  InferenceProgress = 23,
+  InferenceStreamChunk = 24,
+  InferenceCompleted = 25,
+  InferenceFailed = 26,
+  InferenceCancelled = 27,
+  InferenceExpired = 28,
+  ToolCallProposed = 29,
+  ToolCallAccepted = 30,
+  ToolCallRejected = 31,
+  ToolCallCompleted = 32
 }

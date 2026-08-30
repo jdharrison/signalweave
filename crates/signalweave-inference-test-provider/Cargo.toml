@@ -1,0 +1,23 @@
+[package]
+name = "signalweave-inference-test-provider"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Deterministic fake inference provider used for tests and default local development"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+signalweave-inference-core.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+signalweave-core.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

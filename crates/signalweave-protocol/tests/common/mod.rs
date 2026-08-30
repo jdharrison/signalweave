@@ -1,4 +1,24 @@
-use signalweave_protocol::{DeliveryClass, Envelope, OpaquePayload};
+use signalweave_protocol::{
+    ControlPayload, DeliveryClass, Envelope, OpaquePayload, ToolCallCompleted,
+};
+
+/// A second, additive fixture proving cross-language decode of a typed inference/tool-call
+/// control message (Milestone 5), independent of the `ReliableEvent` golden fixture above.
+pub fn tool_call_completed_envelope() -> Envelope {
+    let mut envelope = Envelope::control(
+        DeliveryClass::ReliableOrdered,
+        ControlPayload::ToolCallCompleted(ToolCallCompleted {
+            new_revision: 2,
+            result: b"status updated".to_vec(),
+        }),
+    );
+    envelope.namespace_id = 1;
+    envelope.session_id = 1;
+    envelope.space_id = 1;
+    envelope.entity_id = Some(7);
+    envelope.space_epoch = 1;
+    envelope
+}
 
 pub fn golden_envelope() -> Envelope {
     let mut envelope = Envelope::reliable_event(

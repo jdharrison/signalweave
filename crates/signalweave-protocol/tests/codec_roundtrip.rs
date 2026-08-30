@@ -1,15 +1,23 @@
 use signalweave_protocol::{
     Authenticate, Authenticated, AuthenticationScheme, Capabilities, Codec, CodecError,
     CodecLimits, ControlPayload, DeliveryClass, EntityEntered, EntityLeaveReason, EntityLeft,
-    Envelope, Hello, JoinSession, LeaveSession, MessageKind, MessagePayload, OpaquePayload, Ping,
-    Pong, ProtocolError, ProtocolErrorCode, SnapshotRequest, SpaceTransition, SubscribeSpace,
-    SubscriptionAccepted, SubscriptionRejected, SubscriptionRejectionCode, UnsubscribeSpace,
+    Envelope, Hello, InferenceAccepted, InferenceCancelled, InferenceCompleted, InferenceExpired,
+    InferenceFailed, InferenceProgress, InferenceRequested, InferenceStreamChunk, JoinSession,
+    LeaveSession, MessageKind, MessagePayload, OpaquePayload, Ping, Pong, ProtocolError,
+    ProtocolErrorCode, SnapshotRequest, SpaceTransition, SubscribeSpace, SubscriptionAccepted,
+    SubscriptionRejected, SubscriptionRejectionCode, ToolCallAccepted, ToolCallCompleted,
+    ToolCallProposed, ToolCallRejected, ToolCallRejectionCode, UnsubscribeSpace,
 };
 
 fn envelope_for_control(payload: ControlPayload) -> Envelope {
     let kind = payload.message_kind();
     let delivery = if matches!(kind, MessageKind::Ping | MessageKind::Pong) {
         DeliveryClass::ReliableUnordered
+    } else if matches!(
+        kind,
+        MessageKind::InferenceProgress | MessageKind::InferenceStreamChunk
+    ) {
+        DeliveryClass::BestEffortEvent
     } else {
         DeliveryClass::ReliableOrdered
     };
@@ -43,7 +51,20 @@ fn envelope_for_control(payload: ControlPayload) -> Envelope {
                 _ => 50,
             };
         }
-        MessageKind::EntityEntered | MessageKind::EntityLeft => {
+        MessageKind::EntityEntered
+        | MessageKind::EntityLeft
+        | MessageKind::InferenceRequested
+        | MessageKind::InferenceAccepted
+        | MessageKind::InferenceProgress
+        | MessageKind::InferenceStreamChunk
+        | MessageKind::InferenceCompleted
+        | MessageKind::InferenceFailed
+        | MessageKind::InferenceCancelled
+        | MessageKind::InferenceExpired
+        | MessageKind::ToolCallProposed
+        | MessageKind::ToolCallAccepted
+        | MessageKind::ToolCallRejected
+        | MessageKind::ToolCallCompleted => {
             envelope.namespace_id = 10;
             envelope.session_id = 20;
             envelope.space_id = 30;
@@ -70,6 +91,7 @@ fn envelope_for_control(payload: ControlPayload) -> Envelope {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn all_typed_control_payloads_roundtrip_with_semantic_scopes() {
     let controls = vec![
         ControlPayload::Hello(Hello {
@@ -142,6 +164,47 @@ fn all_typed_control_payloads_roundtrip_with_semantic_scopes() {
             code: ProtocolErrorCode::InvalidScope,
             related_message_kind: MessageKind::SubscribeSpace,
             message: "unknown space".to_owned(),
+        }),
+        ControlPayload::InferenceRequested(InferenceRequested {
+            capability: "language.dialogue".to_owned(),
+            deadline_ms: 2_000,
+            input: b"hello companion".to_vec(),
+        }),
+        ControlPayload::InferenceAccepted(InferenceAccepted { queued_position: 1 }),
+        ControlPayload::InferenceProgress(InferenceProgress { percent: 50 }),
+        ControlPayload::InferenceStreamChunk(InferenceStreamChunk {
+            sequence: 1,
+            chunk: b"partial".to_vec(),
+            is_final: false,
+        }),
+        ControlPayload::InferenceCompleted(InferenceCompleted {
+            result: b"final answer".to_vec(),
+        }),
+        ControlPayload::InferenceFailed(InferenceFailed {
+            reason: "provider unavailable".to_owned(),
+        }),
+        ControlPayload::InferenceCancelled(InferenceCancelled {
+            reason: "user cancelled".to_owned(),
+        }),
+        ControlPayload::InferenceExpired(InferenceExpired {
+            reason: "deadline passed".to_owned(),
+        }),
+        ControlPayload::ToolCallProposed(ToolCallProposed {
+            tool_id: "diagnostics.report".to_owned(),
+            tool_version: 1,
+            arguments: b"{}".to_vec(),
+            expected_revision: 3,
+        }),
+        ControlPayload::ToolCallAccepted(ToolCallAccepted {
+            tool_id: "diagnostics.report".to_owned(),
+        }),
+        ControlPayload::ToolCallRejected(ToolCallRejected {
+            code: ToolCallRejectionCode::Stale,
+            reason: "expected_revision is stale".to_owned(),
+        }),
+        ControlPayload::ToolCallCompleted(ToolCallCompleted {
+            new_revision: 4,
+            result: b"ok".to_vec(),
         }),
     ];
     let codec = Codec::default();
