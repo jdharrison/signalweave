@@ -55,7 +55,7 @@ Crates added in future milestones (do not create empty scaffolding):
 - `signalweave-transport-quic` — Milestone 4
 - `signalweave-transport-webtransport` — Milestone 4
 - `signalweave-inference-*` — Milestone 5
-- `signalweave-loadtest` — Milestone 3
+- `signalweave-loadtest` — Milestone 3 bounded local routing scenarios and measurements
 
 ---
 
@@ -66,7 +66,7 @@ Crates added in future milestones (do not create empty scaffolding):
 | 0 — Discovery, workspace, CI, ADRs | **Complete** |
 | 1 — Core + Protocol vertical slice | **Complete** |
 | 2 — WebSocket server + clients | **Complete** — WebSocket vertical slice, presence/transition lifecycle, Rust client, and TS live-frame decode validation exist |
-| 3 — Interest management + load runner | **Initialized** — bounded 2D/3D grid indexes and spatial routing exist; load runner and measurement remain |
+| 3 — Interest management + load runner | **Complete** — bounded 2D/3D grid routing and a bounded local load runner exist; consumer-specific proxy/fidelity policy remains deferred |
 | 4 — QUIC + WebTransport | Deferred |
 | 5 — Inference plane | Deferred |
 | 6 — Cloud staging plan | Deferred (approval-gated) |

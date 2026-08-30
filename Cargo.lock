@@ -818,6 +818,13 @@ name = "signalweave-core"
 version = "0.1.0"
 
 [[package]]
+name = "signalweave-loadtest"
+version = "0.1.0"
+dependencies = [
+ "signalweave-core",
+]
+
+[[package]]
 name = "signalweave-protocol"
 version = "0.1.0"
 dependencies = [

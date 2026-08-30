@@ -269,6 +269,7 @@ fn lifecycle_action(command: &Command) -> LifecycleAction {
         Command::TransportConnected
         | Command::Authenticate { .. }
         | Command::JoinSession { .. }
+        | Command::UpdateEntityPosition { .. }
         | Command::Publish(_)
         | Command::Snapshot { .. }
         | Command::DrainOutbound { .. } => LifecycleAction::None,

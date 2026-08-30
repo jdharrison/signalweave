@@ -42,9 +42,9 @@ Implemented the Axum health/capability control plane, bounded single-owner Tokio
 
 ### Milestone 3 — Interest management and measurement
 
-**Status: Initialized.**
+**Status: Completed.**
 
-Implemented bounded per-session entity-to-cell and cell-to-entity indexes for uniform 2D and 3D grids. Entity owners can update validated local positions; position updates only mutate the index when a cell boundary is crossed. Replaceable traffic uses configured grid radius with optional exact squared-distance filtering, while critical reliable traffic bypasses spatial filtering. Focused tests cover 2D/3D routing, dimensional validation, radius behavior, and reliable bypass. Remaining work includes load-runner scenarios and measurement output, parent-space coarse proxies, and distance-based representation/update-frequency policy.
+Implemented bounded per-session entity-to-cell and cell-to-entity indexes for uniform 2D and 3D grids. Entity owners can update validated local positions; position updates only mutate the index when a cell boundary is crossed. Replaceable traffic uses configured grid radius with optional exact squared-distance filtering, while critical reliable traffic bypasses spatial filtering. The `signalweave-loadtest` crate runs bounded local broadcast, topic, 2D-grid, and 3D-grid scenarios and reports measured publish latency percentiles, delivery counts, queue effects, and local machine metadata. Focused tests cover 2D/3D routing, dimensional validation, radius behavior, reliable bypass, and all load-runner policies. Parent-space coarse proxies and distance-based representation/update-frequency policy remain consumer-specific extensions: defining aggregate payloads or fidelity tiers in the generic core would introduce domain logic. A future protocol position-update control can expose the existing core API to live clients without changing routing semantics.
 
 ### Milestone 4 — QUIC and WebTransport
 

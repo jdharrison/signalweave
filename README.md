@@ -9,6 +9,8 @@ SIGNALWEAVE is a reusable distributed realtime session, event, state, and infere
 - A versioned, size-prefixed FlatBuffers protocol with verifier-backed bounded decoding, semantic validation, typed control payloads, and checked-in golden fixtures.
 - An Axum HTTP control plane with public `/healthz`, `/readyz`, `/metrics`, and `/v1/capabilities` endpoints, plus a binary WebSocket endpoint.
 - A bounded single-owner Tokio worker and WebSocket adapter supporting handshake, authentication, join/leave, nested subscriptions, reliable fan-out, latest-value coalescing, snapshots, transitions, and clean disconnects.
+- Uniform 2D/3D spatial routing for replaceable state, with owner-updated local positions, cell indexes, radius filtering, optional exact distance checks, and reliable-event bypass.
+- A bounded local load runner for broadcast, topic, 2D-grid, and 3D-grid scenarios with measured publish latency, delivery, queue, and machine metadata.
 - Reference Rust and TypeScript clients. The TypeScript package uses generated FlatBuffers bindings and validates decoding a live frame from the Rust server.
 
 See [`docs/implementation-plan.md`](docs/implementation-plan.md) and [`docs/adr`](docs/adr) for delivery status and architecture decisions.
@@ -48,6 +50,7 @@ The final command regenerates the checked-in protocol fixture and should only pr
 - [`crates/signalweave-server`](crates/signalweave-server): Axum control plane and development server composition.
 - [`crates/signalweave-client-rust`](crates/signalweave-client-rust): native reference client and integration-test driver.
 - [`crates/signalweave-client-ts`](crates/signalweave-client-ts): generated TypeScript FlatBuffers bindings and Node live-frame decoder validation.
+- [`crates/signalweave-loadtest`](crates/signalweave-loadtest): bounded local routing scenarios and measurement output.
 - [`docs/adr`](docs/adr): accepted architecture records.
 
 ## Development configuration

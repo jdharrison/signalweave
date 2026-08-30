@@ -5,6 +5,7 @@ members = [
     "crates/signalweave-server",
     "crates/signalweave-transport-websocket",
     "crates/signalweave-client-rust",
+    "crates/signalweave-loadtest",
 ]
 resolver = "3"
 
