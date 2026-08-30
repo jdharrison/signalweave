@@ -2,16 +2,16 @@
 
 SIGNALWEAVE is a reusable distributed realtime session, event, state, and inference network. The implementation is Rust-first, transport-independent at its core, and designed for browser, Unity/C#, and native clients without embedding application-specific simulation rules.
 
-## Current status
+## Current feature set
 
-The repository is in its first runnable vertical slice:
+- A transport-neutral Rust core with typed IDs, authenticated namespace/session/space/channel grants, nested spaces, subscriptions, entity ownership, channel authority, sequencing, snapshots, bounded state, rate limits, and priority-aware bounded/coalescing outbound queues.
+- Explicit entity lifecycle support: server-assigned entities, disconnect cleanup, subscriber `EntityLeft` notifications, and atomic epoch-validated transitions that emit ordered leave/enter events.
+- A versioned, size-prefixed FlatBuffers protocol with verifier-backed bounded decoding, semantic validation, typed control payloads, and checked-in golden fixtures.
+- An Axum HTTP control plane with public `/healthz`, `/readyz`, `/metrics`, and `/v1/capabilities` endpoints, plus a binary WebSocket endpoint.
+- A bounded single-owner Tokio worker and WebSocket adapter supporting handshake, authentication, join/leave, nested subscriptions, reliable fan-out, latest-value coalescing, snapshots, transitions, and clean disconnects.
+- Reference Rust and TypeScript clients. The TypeScript package uses generated FlatBuffers bindings and validates decoding a live frame from the Rust server.
 
-- **Milestone 0:** workspace, toolchain policy, CI, architecture decisions, implementation plan, and developer setup are complete.
-- **Milestone 1 core:** typed identities, authenticated membership, nested spaces, subscriptions, entity ownership, authority policies, sequencing, snapshots, bounded/coalescing outbound queues, transport-loss cleanup, and a transport-independent worker harness are implemented.
-- **Milestone 1 protocol:** a versioned FlatBuffers envelope, typed control messages, verified bounded decoding, and a Rust golden fixture are implemented.
-- **Deferred:** the HTTP/WebSocket server, TypeScript and C# clients, spatial indexes, QUIC/WebTransport, inference, persistence providers, load testing, containers, and cloud infrastructure.
-
-See [`docs/implementation-plan.md`](docs/implementation-plan.md) for milestone status and [`docs/adr`](docs/adr) for architecture decisions.
+See [`docs/implementation-plan.md`](docs/implementation-plan.md) and [`docs/adr`](docs/adr) for delivery status and architecture decisions.
 
 ## Prerequisites
 
@@ -44,20 +44,17 @@ The final command regenerates the checked-in protocol fixture and should only pr
 
 - [`crates/signalweave-core`](crates/signalweave-core): transport-neutral sessions, spaces, ownership, authority, state, queues, and worker harness.
 - [`crates/signalweave-protocol`](crates/signalweave-protocol): FlatBuffers schema, generated Rust bindings, bounded framing, validation, and fixtures.
+- [`crates/signalweave-transport-websocket`](crates/signalweave-transport-websocket): bounded WebSocket adapter and single-owner core-worker bridge.
+- [`crates/signalweave-server`](crates/signalweave-server): Axum control plane and development server composition.
+- [`crates/signalweave-client-rust`](crates/signalweave-client-rust): native reference client and integration-test driver.
+- [`crates/signalweave-client-ts`](crates/signalweave-client-ts): generated TypeScript FlatBuffers bindings and Node live-frame decoder validation.
 - [`docs/adr`](docs/adr): accepted architecture records.
 
-Crates for the server and transport adapters will be added when they contain working behavior; the project deliberately avoids empty architectural scaffolding.
+## Development configuration
 
-## Configuration contract
+The development server listens on `127.0.0.1:8080` with WebSocket upgrades at `/ws`. Its built-in test composition explicitly provisions namespace/session `1`, logical spaces `1` and `2`, reliable and latest-value channels, and the development token `dev-token`.
 
-The future runtime uses one configuration model locally and in deployment. Precedence, from highest to lowest, is:
-
-1. command-line arguments;
-2. `SIGNALWEAVE_*` environment variables;
-3. an explicitly selected configuration file;
-4. safe built-in defaults.
-
-[`.env.example`](.env.example) contains non-secret local examples. Development authentication must be selected explicitly; authentication is never silently disabled. There is no network listener in the current milestone, so local TLS is not yet required. TLS and development-certificate instructions will arrive with the WebSocket transport.
+[`.env.example`](.env.example) documents the non-secret `SIGNALWEAVE_*` configuration contract for deployment-oriented runtime configuration. Development authentication must be selected explicitly; authentication is never silently disabled. TLS termination and production certificate configuration are deferred with deployment infrastructure.
 
 ## Security baseline
 
