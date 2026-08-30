@@ -2,20 +2,21 @@
 
 SIGNALWEAVE is a reusable distributed realtime session, event, state, and inference network. The implementation is Rust-first, transport-independent at its core, and designed for browser, Unity/C#, and native clients without embedding application-specific simulation rules.
 
-## Hosted and self-hosted
+## Standalone and self-hosted
 
-A managed Signalweave server is available at [signalweave.host](https://signalweave.host). This repository is open-source under the [MIT License](LICENSE) and contains the complete server source, so you can run and self-host Signalweave yourself.
+Signalweave is a general-purpose realtime relay, not a product tied to any particular front end or control plane. Run it standalone and self-hosted, the way you'd self-host Redis or Postgres, with zero dependency on any hosted service. A managed instance is available at [signalweave.host](https://signalweave.host) for teams that don't want to operate their own, but that hosted offering, and any control-panel UI built on top of it, is a separate, optional consumer of this open-source core, not a requirement for using it. This repository is open-source under the [MIT License](LICENSE) and contains the complete server source.
 
 ## Current feature set
 
 - A transport-neutral Rust core with typed IDs, authenticated namespace/session/space/channel grants, nested spaces, subscriptions, entity ownership, channel authority, sequencing, snapshots, bounded state, rate limits, and priority-aware bounded/coalescing outbound queues.
 - Explicit entity lifecycle support: server-assigned entities, disconnect cleanup, subscriber `EntityLeft` notifications, and atomic epoch-validated transitions that emit ordered leave/enter events.
-- A versioned, size-prefixed FlatBuffers protocol with verifier-backed bounded decoding, semantic validation, typed control payloads, and checked-in golden fixtures.
-- An Axum HTTP control plane with public `/healthz`, `/readyz`, `/metrics`, and `/v1/capabilities` endpoints, plus a binary WebSocket endpoint.
-- A bounded single-owner Tokio worker and WebSocket adapter supporting handshake, authentication, join/leave, nested subscriptions, reliable fan-out, latest-value coalescing, snapshots, transitions, and clean disconnects.
+- A versioned, size-prefixed FlatBuffers protocol with verifier-backed bounded decoding, semantic validation, typed control payloads, and checked-in golden fixtures proving byte-for-byte cross-language stability.
+- An Axum HTTP control plane with public `/healthz`, `/readyz`, `/metrics`, and `/v1/capabilities` endpoints.
+- Three interchangeable realtime transports sharing one bounded single-owner Tokio worker and protocol bridge: binary WebSocket (the universal baseline), plus native QUIC and browser WebTransport, which also map unreliable/best-effort traffic to datagrams. All three have real-socket conformance coverage.
 - Uniform 2D/3D spatial routing for replaceable state, with owner-updated local positions, cell indexes, radius filtering, optional exact distance checks, and reliable-event bypass.
 - A bounded local load runner for broadcast, topic, 2D-grid, and 3D-grid scenarios with measured publish latency, delivery, queue, and machine metadata.
-- Reference Rust and TypeScript clients. The TypeScript package uses generated FlatBuffers bindings and validates decoding a live frame from the Rust server.
+- An optional, adjacent inference plane: a bounded per-request provider queue, a provider-neutral capability/request model, and a deterministic tool-call gateway that lets model output propose state changes without ever mutating state directly. Disabled by default; adds no dependency to the core or protocol crates beyond a handful of additive wire message kinds, and the relay is provably unaffected when it's off.
+- Reference Rust and TypeScript clients. The TypeScript package uses generated FlatBuffers bindings and validates decoding both a live frame from the Rust server and checked-in golden fixtures.
 
 See [`docs/implementation-plan.md`](docs/implementation-plan.md) and [`docs/adr`](docs/adr) for delivery status and architecture decisions.
 
@@ -23,6 +24,7 @@ See [`docs/implementation-plan.md`](docs/implementation-plan.md) and [`docs/adr`
 
 - The pinned current-stable Rust 1.98.0 toolchain with rustfmt and Clippy. [`rust-toolchain.toml`](rust-toolchain.toml) installs these automatically through rustup.
 - A C++ compiler and CMake for the pinned vendored FlatBuffers compiler used during protocol builds.
+- Node.js, only if you're working on the TypeScript client bindings or running its decode smoke tests.
 - Docker is optional and is not needed for ordinary Rust development.
 
 A system `flatc` installation is not required. Cargo builds the pinned FlatBuffers 25.12.19 compiler from the `flatc-fork` crate and generates Rust bindings into `OUT_DIR`.
@@ -31,7 +33,10 @@ A system `flatc` installation is not required. Cargo builds the pinned FlatBuffe
 
 ```sh
 cargo test --workspace --all-targets --all-features
+cargo run -p signalweave-server
 ```
+
+The server listens on `127.0.0.1:8080` (WebSocket at `/ws`), `127.0.0.1:8081` (QUIC), and `127.0.0.1:8082` (WebTransport), using an ephemeral self-signed development certificate for the two UDP-based transports.
 
 Common commands:
 
@@ -42,30 +47,38 @@ cargo lint
 cargo test-all
 cargo doc --workspace --no-deps
 cargo run -p signalweave-protocol --example write_golden
+cargo run -p signalweave-protocol --example write_tool_call_completed_fixture
 ```
 
-The final command regenerates the checked-in protocol fixture and should only produce a diff when the protocol intentionally changes.
+The two `write_*_fixture` commands regenerate the checked-in protocol golden fixtures and should only produce a diff when the protocol intentionally changes.
 
 ## Workspace
 
 - [`crates/signalweave-core`](crates/signalweave-core): transport-neutral sessions, spaces, ownership, authority, state, queues, and worker harness.
 - [`crates/signalweave-protocol`](crates/signalweave-protocol): FlatBuffers schema, generated Rust bindings, bounded framing, validation, and fixtures.
-- [`crates/signalweave-transport-websocket`](crates/signalweave-transport-websocket): bounded WebSocket adapter and single-owner core-worker bridge.
+- [`crates/signalweave-transport`](crates/signalweave-transport): shared worker handle, entity-lifecycle fan-out, and protocol bridge used by every transport adapter.
+- [`crates/signalweave-transport-websocket`](crates/signalweave-transport-websocket): binary WebSocket adapter, the universal baseline transport.
+- [`crates/signalweave-transport-quic`](crates/signalweave-transport-quic): native QUIC adapter (Quinn) with reliable streams and unreliable datagrams.
+- [`crates/signalweave-transport-webtransport`](crates/signalweave-transport-webtransport): browser WebTransport adapter with reliable streams and unreliable datagrams.
 - [`crates/signalweave-server`](crates/signalweave-server): Axum control plane and development server composition.
+- [`crates/signalweave-inference-core`](crates/signalweave-inference-core): capability/request/provider data model and the `Provider` trait for the optional inference plane.
+- [`crates/signalweave-inference-tools`](crates/signalweave-inference-tools): bounded tool registry and deterministic tool-call gateway; models propose, the gateway decides.
+- [`crates/signalweave-inference-test-provider`](crates/signalweave-inference-test-provider): deterministic, scripted provider used in tests and local development.
+- [`crates/signalweave-inference-coordinator`](crates/signalweave-inference-coordinator): runs an AI identity as an ordinary core connection and drives providers/tools.
 - [`crates/signalweave-client-rust`](crates/signalweave-client-rust): native reference client and integration-test driver.
-- [`crates/signalweave-client-ts`](crates/signalweave-client-ts): generated TypeScript FlatBuffers bindings and Node live-frame decoder validation.
+- [`crates/signalweave-client-ts`](crates/signalweave-client-ts): generated TypeScript FlatBuffers bindings and Node decode-validation scripts.
 - [`crates/signalweave-loadtest`](crates/signalweave-loadtest): bounded local routing scenarios and measurement output.
 - [`docs/adr`](docs/adr): accepted architecture records.
 
 ## Development configuration
 
-The development server listens on `127.0.0.1:8080` with WebSocket upgrades at `/ws`. Its built-in test composition explicitly provisions namespace/session `1`, logical spaces `1` and `2`, reliable and latest-value channels, and the development token `dev-token`.
+The development server composition explicitly provisions namespace/session `1`, logical spaces `1` and `2`, reliable and latest-value channels, and the development token `dev-token`. When the inference plane is enabled, it also provisions one demo AI identity with its own dev token, entity, and status channel; see [`crates/signalweave-inference-coordinator`](crates/signalweave-inference-coordinator).
 
-[`.env.example`](.env.example) documents the non-secret `SIGNALWEAVE_*` configuration contract for deployment-oriented runtime configuration. Development authentication must be selected explicitly; authentication is never silently disabled. TLS termination and production certificate configuration are deferred with deployment infrastructure.
+[`.env.example`](.env.example) documents the non-secret `SIGNALWEAVE_*` configuration contract for deployment-oriented runtime configuration, including `SIGNALWEAVE_INFERENCE_ENABLED` (the inference plane is off by default). Development authentication must be selected explicitly; authentication is never silently disabled. TLS termination and production certificate configuration are deferred with deployment infrastructure.
 
 ## Security baseline
 
-The core assigns connection and entity identities server-side, requires authentication before participation, enforces explicit namespace/session/space/channel grants and entity ownership, validates sequence and epoch freshness, rate-limits publication, bounds state and payload sizes, and bounds every implemented queue. Protocol buffers received from untrusted peers are verified before field access.
+The core assigns connection and entity identities server-side, requires authentication before participation, enforces explicit namespace/session/space/channel grants and entity ownership, validates sequence and epoch freshness, rate-limits publication, bounds state and payload sizes, and bounds every implemented queue. Protocol buffers received from untrusted peers are verified before field access. The inference plane follows the same rules: an AI identity is just another authenticated connection, and model-proposed state changes only take effect after a deterministic tool gateway validates them, never directly.
 
 ## License
 
