@@ -4,11 +4,12 @@ use std::time::{Duration, Instant};
 use crate::{
     AccessGrant, AuthError, AuthenticatedPrincipal, Authenticator, AuthorityContext,
     AuthorityEmission, AuthorityOutcome, AuthorityRejection, ChannelDefinition, ChannelId,
-    ChannelScope, CoalesceKey, ConnectionId, Credentials, DeliveryClass, EntityId, EntitySnapshot,
-    JournalOutbox, JournalRecord, NamespaceId, OutboundMessage, OutboundQueue, OutboundQueueConfig,
-    ParentAnchor, PersistenceClass, PrincipalId, ProposedMessage, QueueConfigError, QueueError,
-    QueueEviction, QueuePush, SessionKey, SessionSnapshot, SpaceDescriptor, SpaceEpoch, SpaceId,
-    SpaceKey, SpaceSnapshot, SpaceValidationError, StateSnapshot,
+    ChannelScope, CoalesceKey, ConnectionId, Credentials, DeliveryClass, EntityId, EntityPosition,
+    EntitySnapshot, JournalOutbox, JournalRecord, NamespaceId, OutboundMessage, OutboundQueue,
+    OutboundQueueConfig, ParentAnchor, PersistenceClass, PositionValidationError, PrincipalId,
+    ProposedMessage, QueueConfigError, QueueError, QueueEviction, QueuePush, RoutingPolicy,
+    SessionKey, SessionSnapshot, SpaceDescriptor, SpaceEpoch, SpaceId, SpaceKey, SpaceSnapshot,
+    SpaceValidationError, StateSnapshot,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -179,6 +180,8 @@ pub enum CoreError {
     EntityNotFound(EntityId),
     EntityNotOwned(EntityId),
     EntitySpaceMismatch(EntityId),
+    InvalidEntityPosition(PositionValidationError),
+    SpatialCellOutOfRange,
     StateEntryLimitReached,
     StateByteLimitReached,
     SequenceKeyLimitReached,
@@ -328,13 +331,27 @@ struct ConnectionState {
     outbound: OutboundQueue,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct EntityRecord {
     id: EntityId,
     owner_connection: ConnectionId,
     owner_principal: PrincipalId,
     space: SpaceId,
     space_epoch: SpaceEpoch,
+    position: Option<EntityPosition>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+enum SpatialCell {
+    Cartesian2D { x: i64, y: i64 },
+    Cartesian3D { x: i64, y: i64, z: i64 },
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct SpatialCellKey {
+    space: SpaceId,
+    space_epoch: SpaceEpoch,
+    cell: SpatialCell,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -369,6 +386,8 @@ struct SessionState {
     space_epoch_tombstones: BTreeMap<SpaceId, SpaceEpoch>,
     subscribers: BTreeMap<SpaceId, BTreeSet<ConnectionId>>,
     entities: BTreeMap<EntityId, EntityRecord>,
+    entity_cells: BTreeMap<EntityId, SpatialCellKey>,
+    cell_entities: BTreeMap<SpatialCellKey, BTreeSet<EntityId>>,
     sequences: BTreeMap<SequenceKey, u64>,
     state: BTreeMap<StateKey, StateRecord>,
     state_bytes: usize,
@@ -382,6 +401,8 @@ impl SessionState {
             space_epoch_tombstones: BTreeMap::new(),
             subscribers: BTreeMap::new(),
             entities: BTreeMap::new(),
+            entity_cells: BTreeMap::new(),
+            cell_entities: BTreeMap::new(),
             sequences: BTreeMap::new(),
             state: BTreeMap::new(),
             state_bytes: 0,
@@ -390,6 +411,24 @@ impl SessionState {
 
     fn recompute_state_bytes(&mut self) {
         self.state_bytes = self.state.values().map(|record| record.payload.len()).sum();
+    }
+
+    fn remove_entity_from_cell(&mut self, entity: EntityId) {
+        let Some(cell) = self.entity_cells.remove(&entity) else {
+            return;
+        };
+        let remove_cell = self.cell_entities.get_mut(&cell).is_some_and(|entities| {
+            entities.remove(&entity);
+            entities.is_empty()
+        });
+        if remove_cell {
+            self.cell_entities.remove(&cell);
+        }
+    }
+
+    fn insert_entity_into_cell(&mut self, entity: EntityId, cell: SpatialCellKey) {
+        self.entity_cells.insert(entity, cell);
+        self.cell_entities.entry(cell).or_default().insert(entity);
     }
 }
 
@@ -860,6 +899,7 @@ impl<A: Authenticator> SignalweaveCore<A> {
                     owner_principal: principal.principal_id,
                     space: space_key.space,
                     space_epoch: epoch,
+                    position: None,
                 },
             );
         self.connections
@@ -867,6 +907,62 @@ impl<A: Authenticator> SignalweaveCore<A> {
             .ok_or(CoreError::UnknownConnection(connection))?
             .owned_entities += 1;
         Ok(id)
+    }
+
+    pub fn update_entity_position(
+        &mut self,
+        connection: ConnectionId,
+        session_key: SessionKey,
+        entity: EntityId,
+        position: EntityPosition,
+    ) -> Result<(), CoreError> {
+        validate_connection_id(connection)?;
+        validate_session_key(session_key)?;
+        require_nonzero(entity.get(), IdKind::Entity)?;
+        let principal = self.authenticated_principal(connection)?;
+        require_namespace_write(&principal, session_key.namespace)?;
+        require_session_write(&principal, session_key)?;
+        self.require_membership(connection, session_key)?;
+
+        let session = self
+            .sessions
+            .get(&session_key)
+            .ok_or(CoreError::SessionNotFound(session_key))?;
+        let record = session
+            .entities
+            .get(&entity)
+            .ok_or(CoreError::EntityNotFound(entity))?;
+        if record.owner_connection != connection {
+            return Err(CoreError::EntityNotOwned(entity));
+        }
+        let space_key = SpaceKey::new(session_key, record.space);
+        require_space_write(&principal, space_key)?;
+        self.require_subscription(connection, space_key)?;
+        let descriptor = session
+            .spaces
+            .get(&record.space)
+            .ok_or(CoreError::SpaceNotFound(space_key))?;
+        position
+            .validate_for_frame(descriptor.local_frame)
+            .map_err(CoreError::InvalidEntityPosition)?;
+        let cell = spatial_cell_for(position, descriptor, record.space_epoch)?;
+
+        let session = self
+            .sessions
+            .get_mut(&session_key)
+            .ok_or(CoreError::SessionNotFound(session_key))?;
+        if session.entity_cells.get(&entity).copied() != cell {
+            session.remove_entity_from_cell(entity);
+            if let Some(cell) = cell {
+                session.insert_entity_into_cell(entity, cell);
+            }
+        }
+        session
+            .entities
+            .get_mut(&entity)
+            .ok_or(CoreError::EntityNotFound(entity))?
+            .position = Some(position);
+        Ok(())
     }
 
     pub fn remove_entity(
@@ -967,12 +1063,14 @@ impl<A: Authenticator> SignalweaveCore<A> {
             .sessions
             .get_mut(&request.session)
             .ok_or(CoreError::SessionNotFound(request.session))?;
+        session.remove_entity_from_cell(request.entity);
         let record = session
             .entities
             .get_mut(&request.entity)
             .ok_or(CoreError::EntityNotFound(request.entity))?;
         record.space = request.destination_space;
         record.space_epoch = request.destination_epoch;
+        record.position = None;
         session.state.retain(|key, _| {
             key.space != request.source_space
                 || key.space_epoch != request.source_epoch
@@ -1162,8 +1260,7 @@ impl<A: Authenticator> SignalweaveCore<A> {
             let recipients = self
                 .sessions
                 .get(&request.session)
-                .and_then(|session| session.subscribers.get(&outbound.space))
-                .cloned()
+                .map(|session| routing_recipients(session, &outbound))
                 .unwrap_or_default();
             for recipient in recipients {
                 if disconnected.contains(&recipient) {
@@ -1649,6 +1746,9 @@ impl<A: Authenticator> SignalweaveCore<A> {
                 })
                 .collect();
             summary.entities_removed = summary.removed_entities.len();
+            for entity in &removed_entities {
+                session.remove_entity_from_cell(*entity);
+            }
             session
                 .entities
                 .retain(|id, _| !removed_entities.contains(id));
@@ -1699,6 +1799,211 @@ impl<A: Authenticator> SignalweaveCore<A> {
         }
         summary
     }
+}
+
+fn spatial_cell_for(
+    position: EntityPosition,
+    descriptor: &SpaceDescriptor,
+    epoch: SpaceEpoch,
+) -> Result<Option<SpatialCellKey>, CoreError> {
+    let cell = match (position, descriptor.routing) {
+        (EntityPosition::Cartesian2D { x, y }, RoutingPolicy::SpatialGrid2D { cell_size, .. }) => {
+            SpatialCell::Cartesian2D {
+                x: grid_coordinate(x, cell_size)?,
+                y: grid_coordinate(y, cell_size)?,
+            }
+        }
+        (
+            EntityPosition::Cartesian3D { x, y, z },
+            RoutingPolicy::SpatialGrid3D { cell_size, .. },
+        ) => SpatialCell::Cartesian3D {
+            x: grid_coordinate(x, cell_size)?,
+            y: grid_coordinate(y, cell_size)?,
+            z: grid_coordinate(z, cell_size)?,
+        },
+        (_, RoutingPolicy::BroadcastAll | RoutingPolicy::TopicOnly) => return Ok(None),
+        _ => {
+            return Err(CoreError::InvalidEntityPosition(
+                PositionValidationError::DimensionMismatch,
+            ));
+        }
+    };
+    Ok(Some(SpatialCellKey {
+        space: descriptor.id,
+        space_epoch: epoch,
+        cell,
+    }))
+}
+
+// Coordinates are finite and cell sizes positive before conversion; the range check prevents
+// a truncated value from entering the index.
+#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+fn grid_coordinate(value: f64, cell_size: f64) -> Result<i64, CoreError> {
+    let coordinate = (value / cell_size).floor();
+    if !coordinate.is_finite() || coordinate < i64::MIN as f64 || coordinate >= i64::MAX as f64 {
+        return Err(CoreError::SpatialCellOutOfRange);
+    }
+    Ok(coordinate as i64)
+}
+
+fn routing_recipients(
+    session: &SessionState,
+    outbound: &OutboundMessage,
+) -> BTreeSet<ConnectionId> {
+    let subscribers = session
+        .subscribers
+        .get(&outbound.space)
+        .cloned()
+        .unwrap_or_default();
+    let Some(descriptor) = session.spaces.get(&outbound.space) else {
+        return BTreeSet::new();
+    };
+    if outbound.delivery.is_critical()
+        || matches!(
+            descriptor.routing,
+            RoutingPolicy::BroadcastAll | RoutingPolicy::TopicOnly
+        )
+    {
+        return subscribers;
+    }
+
+    let (cell_size, interest_radius, exact_distance) = match descriptor.routing {
+        RoutingPolicy::SpatialGrid2D {
+            cell_size,
+            interest_radius,
+            exact_distance,
+        }
+        | RoutingPolicy::SpatialGrid3D {
+            cell_size,
+            interest_radius,
+            exact_distance,
+        } => (cell_size, interest_radius, exact_distance),
+        RoutingPolicy::BroadcastAll | RoutingPolicy::TopicOnly => return subscribers,
+    };
+    let Some(source_entity) = outbound.entity else {
+        return BTreeSet::new();
+    };
+    let Some(source) = session.entities.get(&source_entity) else {
+        return BTreeSet::new();
+    };
+    let Some(source_position) = source.position else {
+        return BTreeSet::new();
+    };
+    let Some(source_cell) = session.entity_cells.get(&source_entity).copied() else {
+        return BTreeSet::new();
+    };
+    if source_cell.space != outbound.space || source_cell.space_epoch != outbound.space_epoch {
+        return BTreeSet::new();
+    }
+
+    let radius_in_cells = interest_radius / cell_size;
+    let mut recipients = BTreeSet::new();
+    for (candidate_cell, candidate_entities) in &session.cell_entities {
+        if candidate_cell.space != outbound.space
+            || candidate_cell.space_epoch != outbound.space_epoch
+            || !cells_are_near(source_cell.cell, candidate_cell.cell, radius_in_cells)
+        {
+            continue;
+        }
+        for candidate_entity in candidate_entities {
+            let Some(candidate) = session.entities.get(candidate_entity) else {
+                continue;
+            };
+            let Some(candidate_position) = candidate.position else {
+                continue;
+            };
+            if exact_distance
+                && !squared_distance_within(source_position, candidate_position, interest_radius)
+            {
+                continue;
+            }
+            if subscribers.contains(&candidate.owner_connection) {
+                recipients.insert(candidate.owner_connection);
+            }
+        }
+    }
+    recipients
+}
+
+// Cell distances are compared with a finite, validated radius; precision beyond f64 cannot
+// improve the grid's f64 coordinate semantics.
+#[allow(clippy::cast_precision_loss)]
+fn cells_are_near(source: SpatialCell, candidate: SpatialCell, radius_in_cells: f64) -> bool {
+    match (source, candidate) {
+        (
+            SpatialCell::Cartesian2D {
+                x: source_x,
+                y: source_y,
+            },
+            SpatialCell::Cartesian2D {
+                x: candidate_x,
+                y: candidate_y,
+            },
+        ) => {
+            source_x.abs_diff(candidate_x) as f64 <= radius_in_cells
+                && source_y.abs_diff(candidate_y) as f64 <= radius_in_cells
+        }
+        (
+            SpatialCell::Cartesian3D {
+                x: source_x,
+                y: source_y,
+                z: source_z,
+            },
+            SpatialCell::Cartesian3D {
+                x: candidate_x,
+                y: candidate_y,
+                z: candidate_z,
+            },
+        ) => {
+            source_x.abs_diff(candidate_x) as f64 <= radius_in_cells
+                && source_y.abs_diff(candidate_y) as f64 <= radius_in_cells
+                && source_z.abs_diff(candidate_z) as f64 <= radius_in_cells
+        }
+        _ => false,
+    }
+}
+
+fn squared_distance_within(source: EntityPosition, candidate: EntityPosition, radius: f64) -> bool {
+    let components: &[f64] = match (source, candidate) {
+        (
+            EntityPosition::Cartesian2D {
+                x: source_x,
+                y: source_y,
+            },
+            EntityPosition::Cartesian2D {
+                x: candidate_x,
+                y: candidate_y,
+            },
+        ) => &[source_x - candidate_x, source_y - candidate_y],
+        (
+            EntityPosition::Cartesian3D {
+                x: source_x,
+                y: source_y,
+                z: source_z,
+            },
+            EntityPosition::Cartesian3D {
+                x: candidate_x,
+                y: candidate_y,
+                z: candidate_z,
+            },
+        ) => &[
+            source_x - candidate_x,
+            source_y - candidate_y,
+            source_z - candidate_z,
+        ],
+        _ => return false,
+    };
+    let scale = components
+        .iter()
+        .fold(radius, |largest, component| largest.max(component.abs()));
+    if !scale.is_finite() {
+        return false;
+    }
+    let squared_distance = components
+        .iter()
+        .map(|component| (component / scale).powi(2))
+        .sum::<f64>();
+    squared_distance <= (radius / scale).powi(2)
 }
 
 fn validate_session_key(key: SessionKey) -> Result<(), CoreError> {

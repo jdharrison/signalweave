@@ -1,12 +1,12 @@
 use std::collections::VecDeque;
 
 use crate::{
-    Authenticator, CleanupSummary, ConnectionId, CoreError, Credentials, EntityId,
+    Authenticator, CleanupSummary, ConnectionId, CoreError, Credentials, EntityId, EntityPosition,
     EntityTransition, EntityTransitionRequest, OutboundMessage, PrincipalId, PublishOutcome,
     PublishRequest, SessionKey, SessionSnapshot, SignalweaveCore, SpaceEpoch, SpaceKey,
 };
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     TransportConnected,
     Authenticate {
@@ -39,6 +39,12 @@ pub enum Command {
         session: SessionKey,
         entity: EntityId,
     },
+    UpdateEntityPosition {
+        connection: ConnectionId,
+        session: SessionKey,
+        entity: EntityId,
+        position: EntityPosition,
+    },
     TransitionEntity(EntityTransitionRequest),
     Publish(PublishRequest),
     Snapshot {
@@ -63,6 +69,7 @@ pub enum CommandResult {
     Unsubscribed(CleanupSummary),
     EntitySpawned(EntityId),
     EntityRemoved(CleanupSummary),
+    EntityPositionUpdated,
     EntityTransitioned(EntityTransition),
     Published(PublishOutcome),
     Snapshot(SessionSnapshot),
@@ -141,6 +148,15 @@ impl<A: Authenticator> TransportIndependentWorker<A> {
                 .core
                 .remove_entity(connection, session, entity)
                 .map(CommandResult::EntityRemoved),
+            Command::UpdateEntityPosition {
+                connection,
+                session,
+                entity,
+                position,
+            } => self
+                .core
+                .update_entity_position(connection, session, entity, position)
+                .map(|()| CommandResult::EntityPositionUpdated),
             Command::TransitionEntity(request) => self
                 .core
                 .transition_entity(request)

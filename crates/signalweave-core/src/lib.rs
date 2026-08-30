@@ -30,9 +30,9 @@ pub use journal::{
     JournalError, JournalOutbox, JournalOutboxError, JournalRecord, JournalSink, NoopJournalSink,
 };
 pub use model::{
-    CoalesceKey, CoordinateFrame, DeliveryClass, EntitySnapshot, OutboundMessage, ParentAnchor,
-    PersistenceClass, RoutingPolicy, ScopedCoalesceKey, SessionSnapshot, SpaceDescriptor,
-    SpaceSnapshot, SpaceValidationError, StateSnapshot,
+    CoalesceKey, CoordinateFrame, DeliveryClass, EntityPosition, EntitySnapshot, OutboundMessage,
+    ParentAnchor, PersistenceClass, PositionValidationError, RoutingPolicy, ScopedCoalesceKey,
+    SessionSnapshot, SpaceDescriptor, SpaceSnapshot, SpaceValidationError, StateSnapshot,
 };
 pub use queue::{
     OutboundQueue, OutboundQueueConfig, QueueConfigError, QueueError, QueueEviction, QueuePush,

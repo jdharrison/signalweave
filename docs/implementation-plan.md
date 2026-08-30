@@ -42,9 +42,9 @@ Implemented the Axum health/capability control plane, bounded single-owner Tokio
 
 ### Milestone 3 — Interest management and measurement
 
-**Status: Deferred.**
+**Status: Initialized.**
 
-Implement broadcast, topic, hashed 2D grid, and hashed 3D grid routing, including boundary changes, exact distance filtering, coarse parent proxies, and configurable representation frequency. Add a configurable load runner and record real machine details, throughput, latency percentiles, queue occupancy, replacements, drops, CPU, and memory. Profile before introducing low-level optimization.
+Implemented bounded per-session entity-to-cell and cell-to-entity indexes for uniform 2D and 3D grids. Entity owners can update validated local positions; position updates only mutate the index when a cell boundary is crossed. Replaceable traffic uses configured grid radius with optional exact squared-distance filtering, while critical reliable traffic bypasses spatial filtering. Focused tests cover 2D/3D routing, dimensional validation, radius behavior, and reliable bypass. Remaining work includes load-runner scenarios and measurement output, parent-space coarse proxies, and distance-based representation/update-frequency policy.
 
 ### Milestone 4 — QUIC and WebTransport
 

@@ -5,11 +5,12 @@ use std::time::{Duration, Instant};
 use signalweave_core::{
     AccessGrant, AuthenticatedPrincipal, AuthorizationGrants, ChannelDefinition, ChannelId,
     ChannelScope, CoalesceKey, Command, CommandResult, CoordinateFrame, CoreConfig, CoreError,
-    Credentials, DeliveryClass, DevAuthenticator, EntityId, EntityTransitionRequest, HarnessError,
-    IdKind, JournalRecord, JournalSink, NamespaceId, NoopJournalSink, OutboundMessage,
-    OutboundQueueConfig, ParentAnchor, PersistenceClass, PrincipalId, PublishRateLimit,
-    PublishRequest, RoutingPolicy, SessionId, SessionKey, SignalweaveCore, SpaceDescriptor,
-    SpaceEpoch, SpaceId, SpaceKey, TransportIndependentWorker, WorkerHarness,
+    Credentials, DeliveryClass, DevAuthenticator, EntityId, EntityPosition,
+    EntityTransitionRequest, HarnessError, IdKind, JournalRecord, JournalSink, NamespaceId,
+    NoopJournalSink, OutboundMessage, OutboundQueueConfig, ParentAnchor, PersistenceClass,
+    PrincipalId, PublishRateLimit, PublishRequest, RoutingPolicy, SessionId, SessionKey,
+    SignalweaveCore, SpaceDescriptor, SpaceEpoch, SpaceId, SpaceKey, TransportIndependentWorker,
+    WorkerHarness,
 };
 
 const NAMESPACE_A: NamespaceId = NamespaceId::new(10);
@@ -162,6 +163,20 @@ fn channel_policy(channel: ChannelId) -> (DeliveryClass, PersistenceClass) {
         STATE_CHANNEL => (DeliveryClass::LatestValue, PersistenceClass::Stateful),
         DURABLE_CHANNEL => (DeliveryClass::ReliableOrdered, PersistenceClass::Durable),
         _ => panic!("test channel must have a registered policy"),
+    }
+}
+
+fn spatial_descriptor(
+    id: SpaceId,
+    routing: RoutingPolicy,
+    local_frame: CoordinateFrame,
+) -> SpaceDescriptor {
+    SpaceDescriptor {
+        id,
+        local_frame,
+        parent: None,
+        epoch: EPOCH_ONE,
+        routing,
     }
 }
 
@@ -977,6 +992,169 @@ fn zero_ids_are_rejected_at_core_boundaries() {
         )),
         Err(CoreError::ReservedZeroId(IdKind::Channel))
     );
+}
+
+#[test]
+fn spatial_grid_2d_filters_replaceable_updates_and_critical_events_bypass_interest() {
+    let mut core = make_core(CoreConfig::default());
+    core.install_space(
+        session_a(),
+        spatial_descriptor(
+            SECONDARY,
+            RoutingPolicy::SpatialGrid2D {
+                cell_size: 10.0,
+                interest_radius: 10.0,
+                exact_distance: true,
+            },
+            CoordinateFrame::Cartesian2D {
+                meters_per_unit: 1.0,
+            },
+        ),
+    )
+    .expect("spatial space installation");
+    let alice = connect_authenticated(&mut core, "alice");
+    let bob = connect_authenticated(&mut core, "bob");
+    join_and_subscribe(&mut core, alice, SECONDARY);
+    join_and_subscribe(&mut core, bob, SECONDARY);
+    let alice_entity = core
+        .spawn_entity(alice, SpaceKey::new(session_a(), SECONDARY), EPOCH_ONE)
+        .expect("alice entity spawn");
+    let bob_entity = core
+        .spawn_entity(bob, SpaceKey::new(session_a(), SECONDARY), EPOCH_ONE)
+        .expect("bob entity spawn");
+    core.update_entity_position(
+        alice,
+        session_a(),
+        alice_entity,
+        EntityPosition::Cartesian2D { x: 0.0, y: 0.0 },
+    )
+    .expect("alice position");
+    core.update_entity_position(
+        bob,
+        session_a(),
+        bob_entity,
+        EntityPosition::Cartesian2D { x: 9.0, y: 0.0 },
+    )
+    .expect("bob nearby position");
+
+    core.publish(publish_request(
+        alice,
+        SECONDARY,
+        EPOCH_ONE,
+        alice_entity,
+        STATE_CHANNEL,
+        1,
+        1,
+        b"near",
+    ))
+    .expect("near state publication");
+    assert_eq!(core.drain_outbound(bob).expect("bob outbound").len(), 1);
+
+    core.update_entity_position(
+        bob,
+        session_a(),
+        bob_entity,
+        EntityPosition::Cartesian2D { x: 11.0, y: 0.0 },
+    )
+    .expect("bob distant position");
+    core.publish(publish_request(
+        alice,
+        SECONDARY,
+        EPOCH_ONE,
+        alice_entity,
+        STATE_CHANNEL,
+        2,
+        1,
+        b"far",
+    ))
+    .expect("far state publication");
+    assert!(core.drain_outbound(bob).expect("bob outbound").is_empty());
+
+    core.publish(publish_request(
+        alice,
+        SECONDARY,
+        EPOCH_ONE,
+        alice_entity,
+        EVENT_CHANNEL,
+        1,
+        0,
+        b"critical",
+    ))
+    .expect("critical publication");
+    assert_eq!(core.drain_outbound(bob).expect("bob outbound").len(), 1);
+}
+
+#[test]
+fn spatial_grid_3d_rejects_dimension_mismatches_and_routes_nearby_entities() {
+    let mut core = make_core(CoreConfig::default());
+    core.install_space(
+        session_a(),
+        spatial_descriptor(
+            SECONDARY,
+            RoutingPolicy::SpatialGrid3D {
+                cell_size: 5.0,
+                interest_radius: 5.0,
+                exact_distance: true,
+            },
+            CoordinateFrame::Cartesian3D {
+                meters_per_unit: 1.0,
+            },
+        ),
+    )
+    .expect("spatial space installation");
+    let alice = connect_authenticated(&mut core, "alice");
+    let bob = connect_authenticated(&mut core, "bob");
+    join_and_subscribe(&mut core, alice, SECONDARY);
+    join_and_subscribe(&mut core, bob, SECONDARY);
+    let alice_entity = core
+        .spawn_entity(alice, SpaceKey::new(session_a(), SECONDARY), EPOCH_ONE)
+        .expect("alice entity spawn");
+    let bob_entity = core
+        .spawn_entity(bob, SpaceKey::new(session_a(), SECONDARY), EPOCH_ONE)
+        .expect("bob entity spawn");
+    assert!(matches!(
+        core.update_entity_position(
+            alice,
+            session_a(),
+            alice_entity,
+            EntityPosition::Cartesian2D { x: 0.0, y: 0.0 },
+        ),
+        Err(CoreError::InvalidEntityPosition(_))
+    ));
+    core.update_entity_position(
+        alice,
+        session_a(),
+        alice_entity,
+        EntityPosition::Cartesian3D {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+    )
+    .expect("alice position");
+    core.update_entity_position(
+        bob,
+        session_a(),
+        bob_entity,
+        EntityPosition::Cartesian3D {
+            x: 3.0,
+            y: 4.0,
+            z: 0.0,
+        },
+    )
+    .expect("bob position");
+    core.publish(publish_request(
+        alice,
+        SECONDARY,
+        EPOCH_ONE,
+        alice_entity,
+        STATE_CHANNEL,
+        1,
+        1,
+        b"edge",
+    ))
+    .expect("edge state publication");
+    assert_eq!(core.drain_outbound(bob).expect("bob outbound").len(), 1);
 }
 
 #[test]

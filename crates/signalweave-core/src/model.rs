@@ -38,6 +38,53 @@ pub enum CoordinateFrame {
     Cartesian3D { meters_per_unit: f64 },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum EntityPosition {
+    Cartesian2D { x: f64, y: f64 },
+    Cartesian3D { x: f64, y: f64, z: f64 },
+}
+
+impl EntityPosition {
+    pub fn validate_for_frame(self, frame: CoordinateFrame) -> Result<(), PositionValidationError> {
+        let dimensions_match = matches!(
+            (self, frame),
+            (
+                Self::Cartesian2D { .. },
+                CoordinateFrame::Cartesian2D { .. }
+            ) | (
+                Self::Cartesian3D { .. },
+                CoordinateFrame::Cartesian3D { .. }
+            )
+        );
+        if matches!(frame, CoordinateFrame::Logical) {
+            return Err(PositionValidationError::LogicalFrame);
+        }
+        if !dimensions_match {
+            return Err(PositionValidationError::DimensionMismatch);
+        }
+        if self.is_finite() {
+            Ok(())
+        } else {
+            Err(PositionValidationError::NonFiniteCoordinate)
+        }
+    }
+
+    #[must_use]
+    pub const fn is_finite(self) -> bool {
+        match self {
+            Self::Cartesian2D { x, y } => x.is_finite() && y.is_finite(),
+            Self::Cartesian3D { x, y, z } => x.is_finite() && y.is_finite() && z.is_finite(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PositionValidationError {
+    LogicalFrame,
+    DimensionMismatch,
+    NonFiniteCoordinate,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ParentAnchor {
     pub parent_space: SpaceId,
@@ -103,12 +150,21 @@ impl SpaceDescriptor {
                 cell_size,
                 interest_radius,
                 ..
+            } => {
+                if !matches!(self.local_frame, CoordinateFrame::Cartesian2D { .. }) {
+                    return Err(SpaceValidationError::RoutingDimensionMismatch);
+                }
+                validate_positive_finite(cell_size)?;
+                validate_positive_finite(interest_radius)?;
             }
-            | RoutingPolicy::SpatialGrid3D {
+            RoutingPolicy::SpatialGrid3D {
                 cell_size,
                 interest_radius,
                 ..
             } => {
+                if !matches!(self.local_frame, CoordinateFrame::Cartesian3D { .. }) {
+                    return Err(SpaceValidationError::RoutingDimensionMismatch);
+                }
                 validate_positive_finite(cell_size)?;
                 validate_positive_finite(interest_radius)?;
             }
@@ -133,6 +189,7 @@ pub enum SpaceValidationError {
     ZeroAnchorEntityId,
     SelfParent,
     InvalidScale,
+    RoutingDimensionMismatch,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

@@ -66,7 +66,7 @@ Crates added in future milestones (do not create empty scaffolding):
 | 0 — Discovery, workspace, CI, ADRs | **Complete** |
 | 1 — Core + Protocol vertical slice | **Complete** |
 | 2 — WebSocket server + clients | **Complete** — WebSocket vertical slice, presence/transition lifecycle, Rust client, and TS live-frame decode validation exist |
-| 3 — Interest management + load runner | Deferred |
+| 3 — Interest management + load runner | **Initialized** — bounded 2D/3D grid indexes and spatial routing exist; load runner and measurement remain |
 | 4 — QUIC + WebTransport | Deferred |
 | 5 — Inference plane | Deferred |
 | 6 — Cloud staging plan | Deferred (approval-gated) |
@@ -159,6 +159,7 @@ DeliveryClass:    ReliableOrdered | ReliableUnordered | LatestValue | Unreliable
 PersistenceClass: Ephemeral | Stateful | Durable
 RoutingPolicy:    BroadcastAll | SpatialGrid2D{cell_size,interest_radius,exact_distance} | SpatialGrid3D{...} | TopicOnly
 CoordinateFrame:  Logical | Cartesian2D{meters_per_unit} | Cartesian3D{meters_per_unit}
+EntityPosition:   Cartesian2D{x,y} | Cartesian3D{x,y,z}  // finite; must match a spatial space frame
 
 SpaceDescriptor { id, local_frame, parent: Option<ParentAnchor>, epoch, routing }
 ParentAnchor    { parent_space: SpaceId, anchor_entity: EntityId }
@@ -224,6 +225,7 @@ let summary = core.transport_lost(conn_id)?;                    // full cleanup,
 
 // Space management
 core.advance_space_epoch(session_key, space_id, new_epoch)?;   // evicts entities+state+sequences
+core.update_entity_position(conn_id, session_key, entity_id, position)?; // owner-only; updates grid index on cell crossing
 // Epoch tombstones prevent ID reuse. Recreation must advance the epoch.
 
 // PublishRequest fields:
@@ -259,7 +261,8 @@ harness.run_pending() → Vec<Result<CommandResult, CoreError>>
 
 // Commands: TransportConnected | Authenticate{..} | JoinSession{..} | LeaveSession{..}
 //           Subscribe{..} | Unsubscribe{..} | SpawnEntity{..} | RemoveEntity{..}
-//           Publish(PublishRequest) | Snapshot{..} | DrainOutbound{..} | TransportLost{..}
+//           UpdateEntityPosition{..} | TransitionEntity(..) | Publish(PublishRequest)
+//           Snapshot{..} | DrainOutbound{..} | TransportLost{..}
 // CommandResult: Connected(ConnectionId) | Authenticated(PrincipalId) | Joined | Left(CleanupSummary)
 //               Subscribed | Unsubscribed(CleanupSummary) | EntitySpawned(EntityId)
 //               EntityRemoved(CleanupSummary) | Published(PublishOutcome) | Snapshot(SessionSnapshot)
