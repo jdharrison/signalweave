@@ -1,5 +1,5 @@
-//! Milestone 5 exit-criteria coverage: an AI conversation round-trip, a read-only tool
-//! call, and rejection of a deliberately stale state-changing tool proposal.
+//! Inference plane coverage: an AI conversation round-trip, a read-only tool call, and
+//! rejection of a deliberately stale state-changing tool proposal.
 //!
 //! Disabling the plane leaving relay tests unchanged is proven by `tests/websocket.rs`
 //! continuing to pass unmodified: it exercises `development_router()`, which never enables

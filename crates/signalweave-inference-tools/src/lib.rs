@@ -154,8 +154,8 @@ async fn publish_latest_value(
 }
 
 pub mod demo {
-    //! Two demo tools used by Milestone 5's exit-criteria tests: a read-only diagnostic and
-    //! a state-changing status update gated by `expected_revision`.
+    //! Two demo tools used by the coordinator's integration tests: a read-only diagnostic
+    //! and a state-changing status update gated by `expected_revision`.
 
     use std::sync::atomic::{AtomicU64, Ordering};
 

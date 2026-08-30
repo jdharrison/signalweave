@@ -3,7 +3,7 @@ use signalweave_protocol::{
 };
 
 /// A second, additive fixture proving cross-language decode of a typed inference/tool-call
-/// control message (Milestone 5), independent of the `ReliableEvent` golden fixture above.
+/// control message, independent of the `ReliableEvent` golden fixture above.
 pub fn tool_call_completed_envelope() -> Envelope {
     let mut envelope = Envelope::control(
         DeliveryClass::ReliableOrdered,

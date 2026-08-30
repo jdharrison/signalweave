@@ -1,6 +1,6 @@
 # Signalweave Protocol
 
-Milestone 1 defines the transport-neutral Signalweave Protocol v1 envelope, typed control messages, bounded size-prefixed framing, safe owned Rust representations, and conformance fixtures. A transport adapter supplies and consumes complete frames; this crate does not depend on WebSocket, QUIC, WebTransport, or `signalweave-core` internals.
+This crate defines the transport-neutral Signalweave Protocol v1 envelope, typed control messages, bounded size-prefixed framing, safe owned Rust representations, and conformance fixtures. A transport adapter supplies and consumes complete frames; this crate does not depend on WebSocket, QUIC, WebTransport, or `signalweave-core` internals.
 
 ## Wire format
 
@@ -51,7 +51,7 @@ VENDORED_FLATC=$(find target/debug/build -path '*/out/bin/flatc' -type f -print 
 "$VENDORED_FLATC" --csharp -o /tmp/signalweave-csharp schemas/signalweave_v1.fbs
 ```
 
-A separately installed compiler may be substituted only when `flatc --version` reports `25.12.19`. TypeScript and C# generation commands are documented for compatibility work, but executing their bindings and cross-language golden tests remains Milestone 2. A .NET SDK/runtime is not available in the current development environment.
+A separately installed compiler may be substituted only when `flatc --version` reports `25.12.19`. TypeScript generation, bindings, and cross-language golden-fixture decode tests are implemented in `crates/signalweave-client-ts`. C# generation is documented for compatibility work but its bindings and golden tests are not yet exercised; a .NET SDK/runtime is not available in the current development environment.
 
 ## Compatibility rules
 
@@ -66,16 +66,17 @@ Schema changes are reviewed against these rules:
 7. `Hello` advertises a supported version range and `Capabilities` selects a mutually supported version. Once selected, every envelope uses that exact version. Peers reject an unsupported version rather than silently reinterpreting it.
 8. Breaking syntax or semantics require a new negotiated protocol version, a new versioned namespace/schema, and new golden fixtures.
 
-## Golden fixture
+## Golden fixtures
 
-- Binary: `tests/fixtures/reliable_event_v1.swp`
-- Expected values: `tests/fixtures/reliable_event_v1.expected.txt`
+- `tests/fixtures/reliable_event_v1.swp` (+ `.expected.txt`) — exercises every envelope metadata field and an opaque reliable-event payload.
+- `tests/fixtures/tool_call_completed_v1.swp` (+ `.expected.txt`) — exercises a typed inference/tool-call control message, independent of the fixture above.
 
-The fixture exercises every envelope metadata field and an opaque reliable-event payload. Regenerate it deterministically with:
+Regenerate them deterministically with:
 
 ```sh
 cargo run -p signalweave-protocol --example write_golden
+cargo run -p signalweave-protocol --example write_tool_call_completed_fixture
 cargo test -p signalweave-protocol --test golden
 ```
 
-The tests require both byte-for-byte encoding stability and equivalent verified decoding.
+The tests require both byte-for-byte encoding stability and equivalent verified decoding. `crates/signalweave-client-ts` decodes both fixtures from TypeScript to prove cross-language equivalence.

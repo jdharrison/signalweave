@@ -21,8 +21,8 @@ fn golden_fixture_decodes_to_expected_values() {
     assert_eq!(decoded, common::golden_envelope());
 }
 
-/// Second, additive fixture (Milestone 5): proves a typed inference/tool-call control
-/// message round-trips byte-for-byte, independent of the `ReliableEvent` fixture above.
+/// Second, additive fixture: proves a typed inference/tool-call control message round-trips
+/// byte-for-byte, independent of the `ReliableEvent` fixture above.
 #[test]
 fn tool_call_completed_fixture_is_byte_for_byte_stable() {
     let encoded = Codec::default()

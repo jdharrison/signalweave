@@ -13,7 +13,7 @@ Source sections below provide exact public APIs so you can write code against th
 | SIGNALWEAVE | Umbrella project |
 | Signalweave Node | Runtime process |
 | Signalweave Protocol | Wire protocol (file identifier `SWP1`) |
-| Signalweave Intelligence | Inference subsystem (Milestone 5, not started) |
+| Signalweave Intelligence | Inference subsystem; optional, adjacent, disabled by default |
 | `Namespace` | Project/tenant isolation (e.g. `dark-forest`, `portfolio`) |
 | `Session` | Shared realm inside a namespace |
 | `Space` | Spatial or logical scope within a session, owns a coordinate frame and routing policy |
@@ -39,38 +39,41 @@ signalweave/
 ├── .env.example                     ← SIGNALWEAVE_* env vars, no secrets
 ├── .github/workflows/ci.yml         ← format, lint, test, doc, audit
 ├── docs/
-│   ├── bootstrap.md                 ← original prompt (read only when adding a new milestone)
-│   ├── implementation-plan.md       ← milestone status (update when milestones complete)
+│   ├── bootstrap.md                 ← original project prompt (historical reference)
+│   ├── status.md                    ← what's implemented; update when that changes
 │   └── adr/0001–0013-*.md          ← architecture decisions (read only when topic-relevant)
 └── crates/
-    ├── signalweave-core/            ← Milestone 1 DONE
-    └── signalweave-protocol/        ← Milestone 1 DONE
+    ├── signalweave-core                    ← transport-neutral sessions, spaces, ownership, queues
+    ├── signalweave-protocol                ← FlatBuffers schema, codec, semantic validation, fixtures
+    ├── signalweave-transport               ← shared worker handle, lifecycle fan-out, protocol bridge
+    ├── signalweave-transport-websocket     ← binary WebSocket adapter (universal baseline)
+    ├── signalweave-transport-quic          ← native QUIC adapter (Quinn)
+    ├── signalweave-transport-webtransport  ← browser WebTransport adapter
+    ├── signalweave-server                  ← Axum control plane, development server composition
+    ├── signalweave-inference-core          ← capability/request/provider data model, Provider trait
+    ├── signalweave-inference-tools         ← bounded tool registry, deterministic tool-call gateway
+    ├── signalweave-inference-test-provider ← deterministic scripted provider for tests/dev
+    ├── signalweave-inference-coordinator   ← runs an AI identity as an ordinary core connection
+    ├── signalweave-client-rust             ← native reference client, integration-test driver
+    ├── signalweave-client-ts               ← generated TypeScript bindings, Node decode scripts
+    └── signalweave-loadtest                ← bounded local routing scenarios and measurement
 ```
 
-Crates added in future milestones (do not create empty scaffolding):
-- `signalweave-server` — Milestone 2
-- `signalweave-transport-websocket` — Milestone 2
-- `signalweave-client-rust` — Milestone 2
-- `signalweave-client-ts` — Milestone 2
-- `signalweave-transport-quic` — Milestone 4
-- `signalweave-transport-webtransport` — Milestone 4
-- `signalweave-inference-*` — Milestone 5
-- `signalweave-loadtest` — Milestone 3 bounded local routing scenarios and measurements
+Do not create empty placeholder crates or modules — every crate above contains working behavior.
 
 ---
 
-## Milestone status
+## Status
 
-| Milestone | Status |
-|---|---|
-| 0 — Discovery, workspace, CI, ADRs | **Complete** |
-| 1 — Core + Protocol vertical slice | **Complete** |
-| 2 — WebSocket server + clients | **Complete** — WebSocket vertical slice, presence/transition lifecycle, Rust client, and TS live-frame decode validation exist |
-| 3 — Interest management + load runner | **Complete** — bounded 2D/3D grid routing and a bounded local load runner exist; consumer-specific proxy/fidelity policy remains deferred |
-| 4 — QUIC + WebTransport | **Complete** — native QUIC and WebTransport adapters with reliable streams and datagram delivery-class mapping; real-socket conformance coverage for both |
-| 5 — Inference plane | **Complete** — adjacent optional coordinator, deterministic tool gateway, and deterministic fake provider exist; disabled by default, zero core/protocol dependency beyond 12 additive message kinds |
-| 6 — Cloud staging plan | Deferred (approval-gated) |
-| 7 — DARK FOREST + portfolio examples | Deferred |
+Feature-complete for its own scope: transport-neutral core, wire protocol, three
+interchangeable realtime transports, spatial interest routing with a load runner, and an
+optional adjacent inference plane. See [`docs/status.md`](docs/status.md) for what's
+implemented in each area and [`docs/adr`](docs/adr) for why.
+
+Cloud deployment, orchestration, and any hosted console/control-panel UI are out of scope
+for this repository by design — Signalweave stays agnostic and self-hostable on its own,
+the way Redis or Postgres are. Domain-specific consumer examples (games, sites, etc.) are
+likewise left to consuming projects.
 
 ---
 
@@ -86,9 +89,10 @@ cargo audit
 
 Aliases defined in `.cargo/config.toml`: `cargo check-all`, `cargo lint`, `cargo test-all`.
 
-Regenerate the protocol golden fixture after any schema change:
+Regenerate the protocol golden fixtures after any schema change:
 ```sh
 cargo run -p signalweave-protocol --example write_golden
+cargo run -p signalweave-protocol --example write_tool_call_completed_fixture
 ```
 
 ---
@@ -103,6 +107,7 @@ cargo run -p signalweave-protocol --example write_golden
 - No empty placeholder crates or modules. Add a crate only when it contains working behavior.
 - No `ensure_session` / implicit session creation. Sessions are provisioned by the server via `core.provision_session()`.
 - No comments that restate the code. Comments explain non-obvious intent only.
+- Inference stays adjacent: no inference dependency enters `signalweave-core` or `signalweave-protocol` internals beyond the additive wire message kinds already there. Disabling the plane must never change relay behavior.
 
 ---
 
@@ -252,7 +257,7 @@ core.pop_journal_record() → Option<JournalRecord>
 ### Worker harness (`crate::worker`)
 
 ```rust
-// Thin synchronous wrapper used by tests and will be used by the transport adapter
+// Thin synchronous wrapper used by tests and by every transport adapter
 let worker = TransportIndependentWorker::new(core);
 let mut harness = WorkerHarness::new(worker, capacity)?;  // capacity = max pending commands
 harness.submit(Command::TransportConnected)?;
@@ -267,6 +272,43 @@ harness.run_pending() → Vec<Result<CommandResult, CoreError>>
 //               Subscribed | Unsubscribed(CleanupSummary) | EntitySpawned(EntityId)
 //               EntityRemoved(CleanupSummary) | Published(PublishOutcome) | Snapshot(SessionSnapshot)
 //               Outbound(Vec<OutboundMessage>) | Disconnected(CleanupSummary)
+```
+
+---
+
+## `signalweave-transport` public API
+
+Shared by every transport adapter (WebSocket, QUIC, WebTransport) and by the inference
+coordinator, which uses it exactly like a transport does.
+
+```rust
+// Cloneable handle to the single bounded core-worker task
+let worker: WorkerHandle = spawn_worker(TransportIndependentWorker::new(core));
+worker.execute(command) → Result<CommandResult, TransportError>
+worker.register_lifecycle(connection, write_sender, shutdown_sender) → Result<(), TransportError>
+worker.subscribe_and_spawn(connection, space, epoch) → Result<EntityId, TransportError>
+worker.activate_subscription(connection, space) → Result<(), TransportError>
+worker.discard_and_disconnect(connection)   // drains then transport_lost, ignores errors
+
+// Deliver an envelope outside the normal per-connection OutboundQueue, reusing the same
+// fan-out plumbing EntityEntered/EntityLeft/SpaceTransition already use:
+worker.broadcast_to_space(space, envelope, exclude: Option<ConnectionId>) → Result<(), TransportError>
+worker.send_to_connection(connection, envelope) → Result<(), TransportError>
+
+// TransportError: WorkerUnavailable | Core(CoreError) | UnknownConnection
+
+// Shared envelope bridge used by every adapter's post-authentication loop
+handle_authenticated(&worker, connection, envelope, &write_sender, inference_sink: Option<&mpsc::Sender<UnroutedControl>>) → Result<(), ()>
+// Forwards InferenceRequested/InferenceCancelled to inference_sink when Some; otherwise
+// falls through to the normal UnsupportedMessage rejection. None when inference is disabled.
+flush_outbound(&worker, connection, &write_sender) → Result<(), ()>
+outbound_envelope(message: OutboundMessage) → Envelope
+send_envelope(&write_sender, envelope) → Result<(), ()>
+send_error(&write_sender, related_kind, code, message)
+
+// A control envelope this crate doesn't itself route, handed to an optional adjacent
+// plane instead of rejected. signalweave-transport has no knowledge of what consumes it.
+struct UnroutedControl { connection: ConnectionId, envelope: Envelope }
 ```
 
 ---
@@ -330,6 +372,18 @@ SpaceTransition(..)             (17)  — space+entity-scoped, delivery=Reliable
 Ping(Ping)                      (18)  — unscoped, delivery=ReliableUnordered
 Pong(Pong)                      (19)  — unscoped, delivery=ReliableUnordered
 ProtocolError(..)               (20)  — optional scope, delivery=ReliableOrdered
+InferenceRequested(..)          (21)  — space+entity-scoped, delivery=ReliableOrdered, client→server
+InferenceAccepted(..)           (22)  — space+entity-scoped, delivery=ReliableOrdered, server→client
+InferenceProgress(..)           (23)  — space+entity-scoped, delivery=BestEffortEvent, server→client
+InferenceStreamChunk(..)        (24)  — space+entity-scoped, delivery=BestEffortEvent, server→client
+InferenceCompleted(..)          (25)  — space+entity-scoped, delivery=ReliableOrdered, server→client
+InferenceFailed(..)             (26)  — space+entity-scoped, delivery=ReliableOrdered, server→client
+InferenceCancelled(..)          (27)  — space+entity-scoped, delivery=ReliableOrdered, either direction
+InferenceExpired(..)            (28)  — space+entity-scoped, delivery=ReliableOrdered, server→client
+ToolCallProposed(..)            (29)  — space+entity-scoped, delivery=ReliableOrdered, broadcast to space
+ToolCallAccepted(..)            (30)  — space+entity-scoped, delivery=ReliableOrdered, broadcast to space
+ToolCallRejected(..)            (31)  — space+entity-scoped, delivery=ReliableOrdered, broadcast to space
+ToolCallCompleted(..)           (32)  — space+entity-scoped, delivery=ReliableOrdered, broadcast to space
 
 // Semantic constraints enforced on both encode and decode:
 // - Unscoped controls: namespace/session/space/channel/entity/epoch must all be 0/None
@@ -349,9 +403,70 @@ ProtocolError(..)               (20)  — optional scope, delivery=ReliableOrder
 // MissingPayloadType | UnexpectedDomainPayload | InvalidSemantics{message_kind, reason}
 
 // Schema: crates/signalweave-protocol/schemas/signalweave_v1.fbs
-// Golden fixture: crates/signalweave-protocol/tests/fixtures/reliable_event_v1.swp
-// Companion: crates/signalweave-protocol/tests/fixtures/reliable_event_v1.expected.txt
+// Golden fixtures: crates/signalweave-protocol/tests/fixtures/{reliable_event_v1,tool_call_completed_v1}.swp
+// Companions: crates/signalweave-protocol/tests/fixtures/*.expected.txt
 // FlatBuffers generation: vendored via flatc-fork=0.6.0 + flatbuffers-build=0.2.4 (no system flatc needed)
+```
+
+---
+
+## `signalweave-inference-*` public API
+
+Optional, adjacent plane (ADR 0009). Disabled by default (`ServerConfig::inference_enabled = false`).
+Adds no dependency to `signalweave-core` or `signalweave-protocol` beyond the wire message
+kinds above. An AI identity is an ordinary authenticated core connection — no special
+authorization concept exists for it.
+
+```rust
+// signalweave-inference-core: capability/request/provider data model
+struct Capability(String);                          // e.g. "language.dialogue"
+struct ProviderDescriptor { capability, locality, privacy, modalities, supports_streaming,
+                             max_context_items, max_concurrency, latency_class, cost_class, quality_tier }
+struct Cancellation;                                 // cheap-clone cooperative cancel flag
+struct ContextItem { source: String, bytes: Vec<u8> }
+struct InferenceRequest { capability, principal, acting_entity, deadline: Instant,
+                           cancellation, context: Vec<ContextItem>, input: Vec<u8>, streaming }
+struct ToolCallProposal { tool_id, tool_version, arguments: Vec<u8>, expected_revision: u64 }
+enum InferenceEvent { Progress{percent} | StreamChunk{sequence,chunk,is_final} |
+                       ToolCallProposed(ToolCallProposal) | Completed{result} | Failed{reason} }
+struct InferenceOutcome { events: Vec<InferenceEvent> }
+
+#[async_trait]
+trait Provider: Send + Sync {
+    fn descriptor(&self) -> ProviderDescriptor;
+    async fn run(&self, request: InferenceRequest) -> InferenceOutcome;
+}
+
+// signalweave-inference-tools: bounded registry + deterministic gateway (ADR 0010)
+struct ToolDefinition { id, version, side_effect: SideEffect }  // SideEffect: ReadOnly | StateChanging
+struct ToolInvocationContext { worker: WorkerHandle, connection, entity, space, space_epoch }
+enum ToolCallOutcome { Completed{new_revision, result} | Rejected{code: ToolCallRejectionReason, reason} }
+
+#[async_trait]
+trait ToolHandler: Send + Sync {
+    fn definition(&self) -> ToolDefinition;
+    async fn invoke(&self, context: &ToolInvocationContext, proposal: &ToolCallProposal) -> ToolCallOutcome;
+}
+
+let mut registry = ToolRegistry::new();              // bounded, MAX_REGISTERED_TOOLS = 64
+registry.register(Arc<dyn ToolHandler>) → Result<(), ToolRegistryError>
+registry.evaluate(&context, &proposal).await → ToolCallOutcome
+// A state-changing handler is responsible for its own staleness check (compare
+// proposal.expected_revision against its own counter) before calling core.publish() —
+// there is no core-level revision primitive; see demo::StatusUpdateTool for the pattern.
+
+// signalweave-inference-test-provider: deterministic scripted Provider, no network/randomness
+DeterministicProvider;                                // implements Provider
+// demo::{DiagnosticTool, StatusUpdateTool} in signalweave-inference-tools pair with its scripts
+
+// signalweave-inference-coordinator: runs one AI identity, drives providers/tools
+struct AiIdentityConfig { token, namespace, session, space, space_epoch, status_channel }
+struct CoordinatorConfig { worker, identity, provider: Arc<dyn Provider>, tools: Arc<ToolRegistry>, queue_capacity }
+spawn(config, inbound: mpsc::Receiver<UnroutedControl>) → Result<(ConnectionId, EntityId), CoordinatorError>
+// Establishes the identity's core connection (TransportConnected → Authenticate → JoinSession
+// → subscribe_and_spawn), then runs its bounded request queue (tokio::sync::Semaphore) and
+// drain-poll task in the background. Rejects with InferenceFailed when the queue is full,
+// rather than queuing unboundedly.
 ```
 
 ---
@@ -373,6 +488,10 @@ ProtocolError(..)               (20)  — optional scope, delivery=ReliableOrder
 | 0011 | Compute Engine VM + external passthrough NLB for staging. Not Cloud Run (wrong lifecycle). Not GKE until scale justifies it |
 | 0012 | Normal target $10–30/month. No GPU continuously. All cloud mutations approval-gated |
 | 0013 | Deferred complexity list: distributed consensus, GKE, GPU inference, vector DBs, agent frameworks, UDP, app-level fragmentation |
+
+ADRs 0011/0012 record decisions made for this repo's own (deferred) cloud staging work.
+Cloud orchestration is now expected to live in a separate consuming project; treat these two
+as historical context rather than an active plan for this repo.
 
 ---
 
@@ -405,69 +524,8 @@ Workspace lints (inherited by all crates via `[lints] workspace = true`):
 
 ---
 
-## Milestone 2 — What to build next
+## Engineering constraints (still apply going forward)
 
-**Goal:** end-to-end binary WebSocket vertical slice. A client connects, authenticates, joins a session, subscribes, publishes, and disconnects cleanly over a real socket. Every protocol message from Milestone 1 that has a corresponding core operation must work.
-
-### New crates required
-
-**`crates/signalweave-server`** — Tokio runtime + Axum HTTP
-- Load config from `SIGNALWEAVE_*` env vars (see `.env.example`) with explicit defaults
-- Expose only: `GET /healthz` (200), `GET /readyz` (200 when core ready), `GET /metrics` (placeholder), `GET /v1/capabilities` (JSON: protocol version, transport list, max frame/payload)
-- Never expose session state unauthenticated
-- Accept connections and hand off to the WebSocket transport
-- `SignalweaveCore` runs in a single-threaded worker task; command/result passing via bounded `mpsc`
-
-**`crates/signalweave-transport-websocket`** — Axum WebSocket adapter
-- Accept binary WebSocket frames; reject text frames with `ProtocolError`
-- Per-connection lifecycle driven by `TransportIndependentWorker` (already tested)
-- Connection handshake order: receive `Hello` → send `Capabilities` → receive `Authenticate` → send `Authenticated` or `ProtocolError` → session/space commands → teardown
-- Use `Codec` for all framing; pass decoded `Envelope` to core commands; encode `OutboundMessage` back to frames
-- Separate read task and write task per connection; bounded channel between them
-- On write-channel full or WebSocket error: call `transport_lost` on the core worker, drain any queued `OutboundMessage`s to discard
-- Keep WebSocket upgrade on a configurable path (default `/ws`)
-
-**`crates/signalweave-client-rust`** — reference native client (used as integration test driver)
-- Connect, send `Hello`, receive `Capabilities`, send `Authenticate`, receive `Authenticated`
-- `join_session`, `subscribe_space`, `publish`, `drain` (receive loop)
-- Synchronous or minimal-async; no need to mirror the full server abstraction
-- Used directly in integration tests — not a production client library yet
-
-### Integration tests (in `signalweave-server` or a `tests/` crate)
-Must demonstrate over a real in-process TCP socket (Tokio test listener or `tokio::test`):
-1. Authentication enforced — unauthenticated publish rejected
-2. Namespace/session/space isolation — wrong-namespace principal cannot join
-3. Nested subscription — one client holds two space subscriptions simultaneously
-4. Entity ownership — bob cannot publish on alice's entity
-5. LatestValue coalescing — two publishes → recipient sees only the newest
-6. Reliable event fan-out — both subscribers receive
-7. Snapshot — returns only subscribed+authorized spaces/state
-8. Disconnect cleanup — transport_lost removes entity, subscriber sees `EntityLeft`
-9. SpaceTransition round-trip — client sends, server sends `EntityLeft` + `EntityEntered`
-10. Malformed frame — server sends `ProtocolError` and closes
-
-### TypeScript client (`crates/signalweave-client-ts`)
-- Use vendored flatc to generate TS bindings: find the built flatc at `target/debug/build/signalweave-protocol-*/out/bin/flatc`, run `flatc --ts -o <outdir> schemas/signalweave_v1.fbs`
-- Wrap in a minimal npm package using the generated code
-- Demonstrate Hello/Capabilities/Authenticate/Authenticated decode in a Node.js test script
-- C# deferred — .NET not available in this environment
-
-### Exit criteria for Milestone 2
-- `cargo test --workspace` passes including integration tests
-- `GET /healthz` returns 200
-- `GET /v1/capabilities` returns valid JSON
-- A Rust client connects, authenticates, publishes, and disconnects without errors
-- Disconnect always removes presence (no stale entities or subscribers)
-- No unauthenticated endpoint exposes session state
-- TS client can decode a frame produced by the Rust server
-
----
-
-## Notes on cost and deferred work
-
-- No container, Dockerfile, or cloud infrastructure in Milestone 2. Those are Milestone 6.
-- No spatial routing in Milestone 2. `BroadcastAll` is sufficient for the integration tests.
-- No inference in Milestone 2. The inference plane is Milestone 5.
 - Do not introduce GKE, Cloud Run, Redis, vector DBs, or distributed consensus at any point without explicit ADR revision and user approval.
 - Benchmark before introducing unsafe code, lock-free structures, or custom allocators.
-- The $10–30/month target applies to cloud deployment only. Local dev has no cost constraint.
+- No container, Dockerfile, or cloud infrastructure exists in this repo yet; that work (if it happens here at all) is approval-gated per the hard rules above.

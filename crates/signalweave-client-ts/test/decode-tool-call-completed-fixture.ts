@@ -7,8 +7,8 @@ import {
   ToolCallCompletedPayload,
 } from "../generated/signalweave/protocol/v1.js";
 
-// Milestone 5: proves the TypeScript bindings can decode a Rust-produced typed
-// inference/tool-call control message, independent of the ReliableEvent golden fixture.
+// Proves the TypeScript bindings can decode a Rust-produced typed inference/tool-call
+// control message, independent of the ReliableEvent golden fixture.
 const frame = readFileSync("../signalweave-protocol/tests/fixtures/tool_call_completed_v1.swp");
 const envelope = Envelope.getSizePrefixedRootAsEnvelope(new ByteBuffer(new Uint8Array(frame)));
 

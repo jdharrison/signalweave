@@ -18,7 +18,7 @@ Signalweave is a general-purpose realtime relay, not a product tied to any parti
 - An integrated inference plane: a bounded per-request provider queue, a provider-neutral capability/request model, and a deterministic tool-call gateway that lets model output propose state changes without ever mutating state directly.
 - Reference Rust and TypeScript clients. The TypeScript package uses generated FlatBuffers bindings and validates decoding both a live frame from the Rust server and checked-in golden fixtures.
 
-See [`docs/implementation-plan.md`](docs/implementation-plan.md) and [`docs/adr`](docs/adr) for delivery status and architecture decisions.
+See [`docs/status.md`](docs/status.md) and [`docs/adr`](docs/adr) for what's implemented and the architecture decisions behind it.
 
 ## Prerequisites
 
