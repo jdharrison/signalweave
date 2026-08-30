@@ -2,6 +2,10 @@
 
 SIGNALWEAVE is a reusable distributed realtime session, event, state, and inference network. The implementation is Rust-first, transport-independent at its core, and designed for browser, Unity/C#, and native clients without embedding application-specific simulation rules.
 
+## Hosted and self-hosted
+
+A managed Signalweave server is available at [signalweave.host](https://signalweave.host). This repository is open-source under the [MIT License](LICENSE) and contains the complete server source, so you can run and self-host Signalweave yourself.
+
 ## Current feature set
 
 - A transport-neutral Rust core with typed IDs, authenticated namespace/session/space/channel grants, nested spaces, subscriptions, entity ownership, channel authority, sequencing, snapshots, bounded state, rate limits, and priority-aware bounded/coalescing outbound queues.
