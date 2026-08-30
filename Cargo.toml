@@ -6,6 +6,7 @@ members = [
     "crates/signalweave-transport",
     "crates/signalweave-transport-websocket",
     "crates/signalweave-transport-quic",
+    "crates/signalweave-transport-webtransport",
     "crates/signalweave-client-rust",
     "crates/signalweave-loadtest",
 ]
@@ -31,6 +32,7 @@ signalweave-protocol = { path = "crates/signalweave-protocol" }
 signalweave-transport = { path = "crates/signalweave-transport" }
 signalweave-transport-websocket = { path = "crates/signalweave-transport-websocket" }
 signalweave-transport-quic = { path = "crates/signalweave-transport-quic" }
+signalweave-transport-webtransport = { path = "crates/signalweave-transport-webtransport" }
 # Async runtime
 tokio = { version = "1.53", features = ["full"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
@@ -38,6 +40,7 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rcgen = "0.13"
+wtransport = { version = "=0.7.2", features = ["dangerous-configuration"] }
 # HTTP + WebSocket
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.7", features = ["trace"] }

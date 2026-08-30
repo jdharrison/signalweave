@@ -57,6 +57,15 @@ numeric_enum!(DeliveryClass, u8, {
     BestEffortEvent = 5,
 });
 
+impl DeliveryClass {
+    /// Returns `true` for delivery classes that should be carried on
+    /// unreliable datagram transports rather than reliable streams.
+    #[must_use]
+    pub const fn is_unreliable(self) -> bool {
+        matches!(self, Self::UnreliableSequenced | Self::BestEffortEvent)
+    }
+}
+
 numeric_enum!(AuthenticationScheme, u8, {
     Unknown = 0,
     Bearer = 1,

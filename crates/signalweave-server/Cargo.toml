@@ -20,6 +20,7 @@ signalweave-core.workspace = true
 signalweave-protocol.workspace = true
 signalweave-transport-websocket.workspace = true
 signalweave-transport-quic.workspace = true
+signalweave-transport-webtransport.workspace = true
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true
@@ -28,6 +29,7 @@ tracing-subscriber.workspace = true
 tower-http.workspace = true
 rcgen.workspace = true
 quinn.workspace = true
+wtransport.workspace = true
 
 [dev-dependencies]
 signalweave-client-rust = { path = "../signalweave-client-rust" }

@@ -1,16 +1,13 @@
-//! Native QUIC transport adapter.
+//! WebTransport transport adapter for Signalweave.
 //!
 //! Control envelopes and reliable data are carried on the first client-initiated bidirectional
-//! stream. `UnreliableSequenced` and `BestEffortEvent` delivery classes are mapped to QUIC
+//! stream. `UnreliableSequenced` and `BestEffortEvent` delivery classes are mapped to WebTransport
 //! unreliable datagrams when they fit within the connection's current datagram budget.
 
 #![deny(unsafe_code)]
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
-use bytes::Bytes;
-use quinn::{Connection, Endpoint, RecvStream, SendStream, VarInt};
-pub use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use signalweave_core::{Command, CommandResult, ConnectionId, Credentials};
 use signalweave_protocol::{
     Authenticated, Capabilities, Codec, ControlPayload, DeliveryClass, Envelope, MessageKind,
@@ -22,84 +19,172 @@ use signalweave_transport::{
 };
 use tokio::sync::{Semaphore, mpsc};
 use tracing::{debug, trace};
+use wtransport::{
+    Connection, Endpoint, Identity, RecvStream, SendStream, ServerConfig, VarInt,
+    endpoint::{SessionRequest, endpoint_side::Server},
+};
 
 const WRITE_CAPACITY: usize = 128;
 const MAX_CONNECTION_TASKS: usize = 4_096;
+const MAX_ALLOWED_ORIGINS: usize = 64;
 const INITIAL_STREAM_TIMEOUT: Duration = Duration::from_secs(10);
 const CLOSE_PROTOCOL: u32 = 0x100;
 const CLOSE_TRANSPORT: u32 = 0x101;
 
-/// Configuration shared by QUIC connection handlers.
-#[derive(Clone)]
-pub struct QuicConfig {
-    /// Handle to the bounded, single-owner core worker.
-    pub worker: WorkerHandle,
-    /// Server name reported in the protocol capabilities response.
-    pub server_name: Arc<str>,
-    /// Server version reported in the protocol capabilities response.
-    pub server_version: Arc<str>,
+/// A bounded allowlist for browser `Origin` request headers.
+///
+/// Requests with an `Origin` header must match this list exactly. By default, requests without
+/// that header are accepted so native local test clients can connect.
+#[derive(Clone, Debug)]
+pub struct OriginPolicy {
+    allowed_origins: Arc<[Arc<str>]>,
+    allow_missing_origin: bool,
 }
 
-impl QuicConfig {
-    #[must_use]
-    pub fn new(worker: WorkerHandle) -> Self {
-        Self {
-            worker,
-            server_name: Arc::from("signalweave"),
-            server_version: Arc::from(env!("CARGO_PKG_VERSION")),
+impl OriginPolicy {
+    /// Create an origin policy from at most 64 exact origin values.
+    pub fn allowlisted(
+        allowed_origins: Vec<Arc<str>>,
+        allow_missing_origin: bool,
+    ) -> Result<Self, OriginPolicyError> {
+        if allowed_origins.len() > MAX_ALLOWED_ORIGINS {
+            return Err(OriginPolicyError::TooManyOrigins);
+        }
+        Ok(Self {
+            allowed_origins: allowed_origins.into(),
+            allow_missing_origin,
+        })
+    }
+
+    fn allows(&self, origin: Option<&str>) -> bool {
+        match origin {
+            Some(origin) => self
+                .allowed_origins
+                .iter()
+                .any(|allowed| allowed.as_ref() == origin),
+            None => self.allow_missing_origin,
         }
     }
 }
 
-/// Build a QUIC server configuration from the certificate chain and private key DER supplied by
-/// the embedding server. This crate never creates a self-signed production certificate.
-pub fn server_config(
-    certificate_chain: Vec<CertificateDer<'static>>,
-    private_key: PrivateKeyDer<'static>,
-) -> Result<quinn::ServerConfig, rustls::Error> {
-    quinn::ServerConfig::with_single_cert(certificate_chain, private_key)
+impl Default for OriginPolicy {
+    fn default() -> Self {
+        Self {
+            allowed_origins: Arc::from([]),
+            allow_missing_origin: true,
+        }
+    }
 }
 
-/// Bind a local QUIC endpoint for a previously constructed server configuration.
+/// Error returned when configuring an origin policy beyond its fixed bound.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OriginPolicyError {
+    /// More than 64 origins were supplied.
+    TooManyOrigins,
+}
+
+impl std::fmt::Display for OriginPolicyError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("origin allowlist exceeds its capacity of 64 entries")
+    }
+}
+
+impl std::error::Error for OriginPolicyError {}
+
+/// Configuration shared by WebTransport session handlers.
+#[derive(Clone)]
+pub struct WebTransportConfig {
+    /// Handle to the bounded, single-owner core worker.
+    pub worker: WorkerHandle,
+    /// Exact WebTransport request path accepted by this adapter.
+    pub path: Arc<str>,
+    /// Server name reported in the protocol capabilities response.
+    pub server_name: Arc<str>,
+    /// Server version reported in the protocol capabilities response.
+    pub server_version: Arc<str>,
+    /// Browser origin authorization policy evaluated before accepting a session.
+    pub origin_policy: OriginPolicy,
+}
+
+impl WebTransportConfig {
+    #[must_use]
+    pub fn new(worker: WorkerHandle) -> Self {
+        Self {
+            worker,
+            path: Arc::from("/webtransport"),
+            server_name: Arc::from("signalweave"),
+            server_version: Arc::from(env!("CARGO_PKG_VERSION")),
+            origin_policy: OriginPolicy::default(),
+        }
+    }
+}
+
+/// Server-side WebTransport endpoint type.
+pub type ServerEndpoint = Endpoint<Server>;
+
+/// Bind a WebTransport server endpoint using the supplied TLS identity.
+///
+/// The embedding server owns certificate lifecycle; this crate does not create self-signed
+/// identities or otherwise manage credentials.
 pub fn server_endpoint(
     bind_address: SocketAddr,
-    server_config: quinn::ServerConfig,
-) -> Result<Endpoint, std::io::Error> {
-    Endpoint::server(server_config, bind_address)
+    identity: Identity,
+) -> std::io::Result<ServerEndpoint> {
+    Endpoint::server(
+        ServerConfig::builder()
+            .with_bind_address(bind_address)
+            .with_identity(identity)
+            .build(),
+    )
 }
 
-/// Accept QUIC handshakes until `endpoint` is closed, serving each successful connection.
+/// Accept WebTransport connection attempts until the endpoint is closed.
 ///
-/// The endpoint loop caps active connection tasks at 4,096. It does not create an application-level
-/// queue: when all permits are in use, it pauses acceptance and relies on
-/// Quinn's configured endpoint limits for backpressure.
-pub async fn serve_endpoint(endpoint: Endpoint, config: QuicConfig) {
+/// At most 4,096 connection tasks are active. When the limit is reached, acceptance pauses
+/// instead of creating an application-level backlog.
+pub async fn serve_endpoint(endpoint: ServerEndpoint, config: WebTransportConfig) {
     let connection_tasks = Arc::new(Semaphore::new(MAX_CONNECTION_TASKS));
-    while let Some(incoming) = endpoint.accept().await {
-        let Ok(connection) = incoming.await else {
-            continue;
-        };
+    loop {
+        let incoming = endpoint.accept().await;
         let Ok(permit) = connection_tasks.clone().acquire_owned().await else {
             return;
         };
         let connection_config = config.clone();
         std::mem::drop(tokio::spawn(async move {
             let _permit = permit;
-            serve_connection(connection, connection_config).await;
+            let Ok(request) = incoming.await else {
+                return;
+            };
+            serve_request(request, connection_config).await;
         }));
     }
 }
 
-/// Serve one established QUIC connection.
+async fn serve_request(request: SessionRequest, config: WebTransportConfig) {
+    if request.path() != config.path.as_ref() {
+        request.not_found().await;
+        return;
+    }
+    if !config.origin_policy.allows(request.origin()) {
+        request.forbidden().await;
+        return;
+    }
+    let Ok(connection) = request.accept().await else {
+        return;
+    };
+    serve_connection(connection, config).await;
+}
+
+/// Serve one accepted WebTransport session.
 ///
-/// The first client-initiated bidirectional stream is the Signalweave control stream. A second
-/// client bidirectional stream is a protocol violation and closes the connection.
+/// The first client-initiated bidirectional stream is the Signalweave control stream. Any second
+/// client bidirectional stream is a protocol violation and closes the session.
 #[allow(
     clippy::manual_let_else,
     clippy::single_match_else,
     clippy::too_many_lines
 )]
-pub async fn serve_connection(connection: Connection, config: QuicConfig) {
+pub async fn serve_connection(connection: Connection, config: WebTransportConfig) {
     let codec = Codec::default();
     let core_connection = match config.worker.execute(Command::TransportConnected).await {
         Ok(CommandResult::Connected(connection)) => connection,
@@ -159,7 +244,7 @@ pub async fn serve_connection(connection: Connection, config: QuicConfig) {
         return;
     }
 
-    let drain_task = spawn_outbound_drain_quic(
+    let drain_task = spawn_outbound_drain_webtransport(
         config.worker.clone(),
         core_connection,
         connection.clone(),
@@ -184,14 +269,14 @@ pub async fn serve_connection(connection: Connection, config: QuicConfig) {
                 }
                 break;
             }
-            datagram = connection.read_datagram() => {
+            datagram = connection.receive_datagram() => {
                 match datagram {
-                    Ok(bytes) => {
+                    Ok(datagram) => {
                         if !authenticated {
                             trace!(?core_connection, "dropping pre-authentication datagram");
                             continue;
                         }
-                        match codec.decode(&bytes) {
+                        match codec.decode(datagram.payload().as_ref()) {
                             Ok(envelope) => {
                                 if handle_authenticated(&config.worker, core_connection, envelope, &write_sender).await.is_err() {
                                     break;
@@ -242,15 +327,15 @@ pub async fn serve_connection(connection: Connection, config: QuicConfig) {
     close(
         &connection,
         CLOSE_PROTOCOL,
-        b"Signalweave QUIC connection closed",
+        b"Signalweave WebTransport session closed",
     );
-    debug!(?core_connection, "QUIC connection closed");
+    debug!(?core_connection, "WebTransport session closed");
 }
 
-fn spawn_outbound_drain_quic(
+fn spawn_outbound_drain_webtransport(
     worker: WorkerHandle,
     connection: ConnectionId,
-    quic_connection: Connection,
+    wt_connection: Connection,
     codec: Codec,
     write_sender: mpsc::Sender<Envelope>,
     shutdown_sender: mpsc::Sender<()>,
@@ -259,9 +344,15 @@ fn spawn_outbound_drain_quic(
         let mut interval = tokio::time::interval(Duration::from_millis(10));
         loop {
             interval.tick().await;
-            if flush_outbound_quic(&worker, connection, &quic_connection, &codec, &write_sender)
-                .await
-                .is_err()
+            if flush_outbound_webtransport(
+                &worker,
+                connection,
+                &wt_connection,
+                &codec,
+                &write_sender,
+            )
+            .await
+            .is_err()
             {
                 let _ = shutdown_sender.try_send(());
                 worker.discard_and_disconnect(connection).await;
@@ -271,10 +362,10 @@ fn spawn_outbound_drain_quic(
     })
 }
 
-async fn flush_outbound_quic(
+async fn flush_outbound_webtransport(
     worker: &WorkerHandle,
     connection: ConnectionId,
-    quic_connection: &Connection,
+    wt_connection: &Connection,
     codec: &Codec,
     write_sender: &mpsc::Sender<Envelope>,
 ) -> Result<(), ()> {
@@ -284,7 +375,7 @@ async fn flush_outbound_quic(
         for message in messages {
             let envelope = outbound_envelope(message);
             if envelope.delivery_class.is_unreliable() {
-                send_datagram_envelope(quic_connection, codec, &envelope);
+                send_datagram_envelope(wt_connection, codec, &envelope);
             } else {
                 send_envelope(write_sender, envelope).await?;
             }
@@ -303,7 +394,7 @@ fn send_datagram_envelope(connection: &Connection, codec: &Codec, envelope: &Env
     };
     let max_size = connection.max_datagram_size();
     if max_size.is_some_and(|limit| frame.len() <= limit) {
-        if let Err(error) = connection.send_datagram(Bytes::from(frame)) {
+        if let Err(error) = connection.send_datagram(&frame) {
             trace!(?error, "dropping datagram that failed to queue");
         }
     } else {
@@ -342,11 +433,15 @@ async fn writer_loop(
         if stream.write_all(&frame).await.is_err() {
             let _ = shutdown.try_send(());
             worker.discard_and_disconnect(core_connection).await;
-            close(&connection, CLOSE_TRANSPORT, b"QUIC stream write failed");
+            close(
+                &connection,
+                CLOSE_TRANSPORT,
+                b"WebTransport stream write failed",
+            );
             return;
         }
     }
-    let _ = stream.finish();
+    let _ = stream.finish().await;
 }
 
 async fn read_envelope(stream: &mut RecvStream, codec: &Codec) -> Result<Envelope, String> {
@@ -370,7 +465,7 @@ async fn read_envelope(stream: &mut RecvStream, codec: &Codec) -> Result<Envelop
 
 async fn handle_hello(
     write_sender: &mpsc::Sender<Envelope>,
-    config: &QuicConfig,
+    config: &WebTransportConfig,
     envelope: &Envelope,
 ) -> Result<(), ()> {
     if !matches!(
@@ -405,7 +500,7 @@ async fn handle_hello(
 
 #[allow(clippy::manual_let_else, clippy::single_match_else)]
 async fn handle_authenticate(
-    config: &QuicConfig,
+    config: &WebTransportConfig,
     connection: ConnectionId,
     write_sender: &mpsc::Sender<Envelope>,
     envelope: Envelope,
@@ -473,123 +568,55 @@ fn close(connection: &Connection, code: u32, reason: &[u8]) {
 
 #[cfg(test)]
 mod tests {
-    use std::{net::Ipv4Addr, sync::Arc};
+    use std::{net::Ipv4Addr, time::Duration};
 
-    use quinn::{ClientConfig, Endpoint, crypto::rustls::QuicClientConfig};
-    use rustls::{RootCertStore, pki_types::PrivatePkcs8KeyDer};
     use signalweave_core::{
-        AuthenticatedPrincipal, AuthorizationGrants, CoreConfig, DevAuthenticator, PrincipalId,
-        SignalweaveCore, TransportIndependentWorker,
+        AccessGrant, AuthenticatedPrincipal, AuthorizationGrants, ChannelDefinition, ChannelId,
+        ChannelScope, CoordinateFrame, CoreConfig, DevAuthenticator, NamespaceId, PersistenceClass,
+        PrincipalId, RoutingPolicy, SessionId, SessionKey, SignalweaveCore, SpaceDescriptor,
+        SpaceEpoch, SpaceId, SpaceKey, TransportIndependentWorker,
     };
     use signalweave_protocol::{
         Authenticate, AuthenticationScheme, EntityLeaveReason, Hello, OpaquePayload,
     };
     use signalweave_transport::spawn_worker;
+    use wtransport::ClientConfig;
 
     use super::*;
 
     const TEST_TIMEOUT: Duration = Duration::from_secs(2);
 
     #[tokio::test]
-    async fn raw_quinn_datagram_smoke_test() {
-        let certified_key = rcgen::generate_simple_self_signed(vec!["localhost".to_owned()])
-            .expect("generate localhost certificate");
-        let certificate = certified_key.cert.der().clone();
-        let private_key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
-            certified_key.key_pair.serialize_der(),
-        ));
-        let server_config = server_config(vec![certificate.clone()], private_key)
-            .expect("build server configuration");
-        let endpoint = server_endpoint(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), server_config)
-            .expect("bind QUIC endpoint");
-        let server_address = endpoint.local_addr().expect("read server address");
-
-        let mut roots = RootCertStore::empty();
-        roots.add(certificate).expect("trust localhost certificate");
-        let client_crypto = rustls::ClientConfig::builder()
-            .with_root_certificates(roots)
-            .with_no_client_auth();
-        let client_config = ClientConfig::new(Arc::new(
-            QuicClientConfig::try_from(client_crypto).expect("create QUIC client configuration"),
-        ));
-        let mut client_endpoint = Endpoint::client(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)))
-            .expect("bind QUIC client endpoint");
-        client_endpoint.set_default_client_config(client_config);
-
-        let (client_conn, server_conn) = tokio::join!(
-            async {
-                client_endpoint
-                    .connect(server_address, "localhost")
-                    .expect("start QUIC connection")
-                    .await
-                    .expect("complete QUIC connection")
-            },
-            async {
-                endpoint
-                    .accept()
-                    .await
-                    .expect("accept incoming")
-                    .await
-                    .expect("complete connection")
-            }
-        );
-
-        eprintln!(
-            "server max_datagram_size: {:?}",
-            server_conn.max_datagram_size()
-        );
-        eprintln!(
-            "client max_datagram_size: {:?}",
-            client_conn.max_datagram_size()
-        );
-
-        server_conn
-            .send_datagram(bytes::Bytes::from_static(b"hello"))
-            .expect("send datagram");
-        let received = tokio::time::timeout(TEST_TIMEOUT, client_conn.read_datagram())
-            .await
-            .expect("read datagram timed out")
-            .expect("read datagram failed");
-        assert_eq!(received.as_ref(), b"hello");
-
-        client_conn.close(VarInt::from_u32(0), b"done");
-        client_endpoint.close(VarInt::from_u32(0), b"done");
-        endpoint.close(VarInt::from_u32(0), b"done");
-    }
-
-    #[tokio::test]
     async fn loopback_client_completes_hello_and_authenticate() {
-        let (endpoint, _worker, server_address, certificate) = setup_server();
-        let (connection, mut send, mut receive, codec, client_endpoint) =
-            connect_client(server_address, certificate).await;
+        let (_worker, server_address) = setup_server();
+        let client = connect_client(server_address).await;
+        let (mut send, mut recv) = open_stream(&client).await;
 
-        perform_handshake(&mut send, &mut receive, &codec).await;
+        perform_handshake(&mut send, &mut recv).await;
 
-        connection.close(VarInt::from_u32(0), b"test complete");
-        client_endpoint.close(VarInt::from_u32(0), b"test complete");
-        endpoint.close(VarInt::from_u32(0), b"test complete");
+        client.close(VarInt::from_u32(0), b"test complete");
     }
 
     #[tokio::test]
-    async fn reliable_event_fan_out_over_quic() {
-        let (endpoint, _worker, server_address, certificate) = setup_server();
-        let (alice_conn, mut alice_send, mut alice_recv, codec, client_endpoint) =
-            connect_client(server_address, certificate.clone()).await;
-        let (bob_conn, mut bob_send, mut bob_recv, _codec2, client_endpoint2) =
-            connect_client(server_address, certificate).await;
+    async fn reliable_event_fan_out_over_webtransport() {
+        let (_worker, server_address) = setup_server();
+        let alice = connect_client(server_address).await;
+        let bob = connect_client(server_address).await;
+        let (mut alice_send, mut alice_recv) = open_stream(&alice).await;
+        let (mut bob_send, mut bob_recv) = open_stream(&bob).await;
 
         for (send, recv) in [
             (&mut alice_send, &mut alice_recv),
             (&mut bob_send, &mut bob_recv),
         ] {
-            perform_handshake(send, recv, &codec).await;
-            join_and_subscribe(send, recv, &codec, 1, 1).await;
+            perform_handshake(send, recv).await;
+            join_and_subscribe(send, recv, 1, 1).await;
         }
 
-        let alice_entity = recv_subscription_accepted_and_entity(&mut alice_recv, &codec).await;
-        let _bob_entity = recv_subscription_accepted_and_entity(&mut bob_recv, &codec).await;
+        let alice_entity = recv_subscription_accepted_and_entity(&mut alice_recv).await;
+        let _bob_entity = recv_subscription_accepted_and_entity(&mut bob_recv).await;
 
-        // Alice publishes a reliable event
+        let codec = Codec::default();
         alice_send
             .write_all(
                 &codec
@@ -607,7 +634,7 @@ mod tests {
                         correlation_id: None,
                         message: MessagePayload::ReliableEvent(OpaquePayload {
                             type_id: 1,
-                            bytes: b"hello-quic".to_vec(),
+                            bytes: b"hello-wt".to_vec(),
                         }),
                     })
                     .expect("encode event"),
@@ -620,38 +647,35 @@ mod tests {
             .expect("receive timed out")
             .expect("decode event");
         assert!(
-            matches!(received.message, MessagePayload::ReliableEvent(ref payload) if payload.bytes == b"hello-quic")
+            matches!(received.message, MessagePayload::ReliableEvent(ref payload) if payload.bytes == b"hello-wt")
         );
 
-        alice_conn.close(VarInt::from_u32(0), b"done");
-        bob_conn.close(VarInt::from_u32(0), b"done");
-        client_endpoint.close(VarInt::from_u32(0), b"done");
-        client_endpoint2.close(VarInt::from_u32(0), b"done");
-        endpoint.close(VarInt::from_u32(0), b"done");
+        alice.close(VarInt::from_u32(0), b"done");
+        bob.close(VarInt::from_u32(0), b"done");
     }
 
     #[tokio::test]
-    async fn disconnect_emits_entity_left_over_quic() {
-        let (endpoint, _worker, server_address, certificate) = setup_server();
-        let (alice_conn, mut alice_send, mut alice_recv, codec, client_endpoint) =
-            connect_client(server_address, certificate.clone()).await;
-        let (bob_conn, mut bob_send, mut bob_recv, _codec2, client_endpoint2) =
-            connect_client(server_address, certificate).await;
+    async fn disconnect_emits_entity_left_over_webtransport() {
+        let (_worker, server_address) = setup_server();
+        let alice = connect_client(server_address).await;
+        let bob = connect_client(server_address).await;
+        let (mut alice_send, mut alice_recv) = open_stream(&alice).await;
+        let (mut bob_send, mut bob_recv) = open_stream(&bob).await;
 
         for (send, recv) in [
             (&mut alice_send, &mut alice_recv),
             (&mut bob_send, &mut bob_recv),
         ] {
-            perform_handshake(send, recv, &codec).await;
-            join_and_subscribe(send, recv, &codec, 1, 1).await;
+            perform_handshake(send, recv).await;
+            join_and_subscribe(send, recv, 1, 1).await;
         }
 
-        let alice_entity = recv_subscription_accepted_and_entity(&mut alice_recv, &codec).await;
-        let _bob_entity = recv_subscription_accepted_and_entity(&mut bob_recv, &codec).await;
+        let alice_entity = recv_subscription_accepted_and_entity(&mut alice_recv).await;
+        let _bob_entity = recv_subscription_accepted_and_entity(&mut bob_recv).await;
 
-        alice_conn.close(VarInt::from_u32(0), b"disconnect");
-        client_endpoint.close(VarInt::from_u32(0), b"disconnect");
+        alice.close(VarInt::from_u32(0), b"disconnect");
 
+        let codec = Codec::default();
         let left = tokio::time::timeout(TEST_TIMEOUT, read_envelope(&mut bob_recv, &codec))
             .await
             .expect("receive timed out")
@@ -662,31 +686,29 @@ mod tests {
             if left.entity_id == Some(alice_entity) && value.reason == EntityLeaveReason::Disconnected
         ));
 
-        bob_conn.close(VarInt::from_u32(0), b"done");
-        client_endpoint2.close(VarInt::from_u32(0), b"done");
-        endpoint.close(VarInt::from_u32(0), b"done");
+        bob.close(VarInt::from_u32(0), b"done");
     }
 
     #[tokio::test]
-    async fn quic_datagram_roundtrip_for_unreliable_delivery() {
-        let (endpoint, _worker, server_address, certificate) = setup_server();
-        let (alice_conn, mut alice_send, mut alice_recv, codec, client_endpoint) =
-            connect_client(server_address, certificate.clone()).await;
-        let (bob_conn, mut bob_send, mut bob_recv, _codec2, client_endpoint2) =
-            connect_client(server_address, certificate).await;
+    async fn webtransport_datagram_roundtrip_for_unreliable_delivery() {
+        let (_worker, server_address) = setup_server();
+        let alice = connect_client(server_address).await;
+        let bob = connect_client(server_address).await;
+        let (mut alice_send, mut alice_recv) = open_stream(&alice).await;
+        let (mut bob_send, mut bob_recv) = open_stream(&bob).await;
 
         for (send, recv) in [
             (&mut alice_send, &mut alice_recv),
             (&mut bob_send, &mut bob_recv),
         ] {
-            perform_handshake(send, recv, &codec).await;
-            join_and_subscribe(send, recv, &codec, 1, 1).await;
+            perform_handshake(send, recv).await;
+            join_and_subscribe(send, recv, 1, 3).await;
         }
 
-        let alice_entity = recv_subscription_accepted_and_entity(&mut alice_recv, &codec).await;
-        let _bob_entity = recv_subscription_accepted_and_entity(&mut bob_recv, &codec).await;
+        let alice_entity = recv_subscription_accepted_and_entity(&mut alice_recv).await;
+        let _bob_entity = recv_subscription_accepted_and_entity(&mut bob_recv).await;
 
-        // Send an unreliable sequenced event as a datagram
+        let codec = Codec::default();
         let frame = codec
             .encode(&Envelope {
                 protocol_version: PROTOCOL_VERSION,
@@ -702,70 +724,57 @@ mod tests {
                 correlation_id: None,
                 message: MessagePayload::EntityState(OpaquePayload {
                     type_id: 1,
-                    bytes: b"datagram-payload".to_vec(),
+                    bytes: b"wt-datagram".to_vec(),
                 }),
             })
             .expect("encode datagram envelope");
-        alice_conn
-            .send_datagram(Bytes::from(frame))
-            .expect("send datagram");
+        alice.send_datagram(&frame).expect("send datagram");
 
-        // Bob should receive the forwarded message as a datagram from the server
-        let datagram = tokio::time::timeout(TEST_TIMEOUT, bob_conn.read_datagram())
+        let datagram = tokio::time::timeout(TEST_TIMEOUT, bob.receive_datagram())
             .await
             .expect("datagram receive timed out")
             .expect("read datagram");
-        let received = codec.decode(&datagram).expect("decode datagram");
+        let received = codec
+            .decode(datagram.payload().as_ref())
+            .expect("decode datagram");
         assert!(
-            matches!(received.message, MessagePayload::EntityState(ref payload) if payload.bytes == b"datagram-payload")
+            matches!(received.message, MessagePayload::EntityState(ref payload) if payload.bytes == b"wt-datagram")
         );
 
-        alice_conn.close(VarInt::from_u32(0), b"done");
-        bob_conn.close(VarInt::from_u32(0), b"done");
-        client_endpoint.close(VarInt::from_u32(0), b"done");
-        client_endpoint2.close(VarInt::from_u32(0), b"done");
-        endpoint.close(VarInt::from_u32(0), b"done");
+        alice.close(VarInt::from_u32(0), b"done");
+        bob.close(VarInt::from_u32(0), b"done");
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────
 
-    fn setup_server() -> (Endpoint, WorkerHandle, SocketAddr, CertificateDer<'static>) {
-        let certified_key = rcgen::generate_simple_self_signed(vec!["localhost".to_owned()])
-            .expect("generate localhost certificate");
-        let certificate = certified_key.cert.der().clone();
-        let private_key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
-            certified_key.key_pair.serialize_der(),
-        ));
-        let server_config = server_config(vec![certificate.clone()], private_key)
-            .expect("build server configuration");
-        let endpoint = server_endpoint(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), server_config)
-            .expect("bind QUIC endpoint");
+    fn setup_server() -> (WorkerHandle, SocketAddr) {
+        let identity =
+            Identity::self_signed(["localhost", "127.0.0.1"]).expect("generate identity");
+        let endpoint = server_endpoint(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), identity)
+            .expect("bind WebTransport endpoint");
         let server_address = endpoint.local_addr().expect("read server address");
 
-        let namespace = signalweave_core::NamespaceId::new(1);
-        let session = signalweave_core::SessionKey {
+        let namespace = NamespaceId::new(1);
+        let session = SessionKey {
             namespace,
-            session: signalweave_core::SessionId::new(1),
+            session: SessionId::new(1),
         };
         let mut grants = AuthorizationGrants::new();
-        grants.grant_namespace(namespace, signalweave_core::AccessGrant::ReadWrite);
-        grants.grant_session(session, signalweave_core::AccessGrant::ReadWrite);
+        grants.grant_namespace(namespace, AccessGrant::ReadWrite);
+        grants.grant_session(session, AccessGrant::ReadWrite);
         for space_id in [1, 2] {
             grants.grant_space(
-                signalweave_core::SpaceKey {
+                SpaceKey {
                     session,
-                    space: signalweave_core::SpaceId::new(space_id),
+                    space: SpaceId::new(space_id),
                 },
-                signalweave_core::AccessGrant::ReadWrite,
+                AccessGrant::ReadWrite,
             );
         }
         for channel_id in [1, 2, 3] {
             grants.grant_channel(
-                signalweave_core::ChannelScope::new(
-                    session,
-                    signalweave_core::ChannelId::new(channel_id),
-                ),
-                signalweave_core::AccessGrant::ReadWrite,
+                ChannelScope::new(session, ChannelId::new(channel_id)),
+                AccessGrant::ReadWrite,
             );
         }
         let mut authenticator =
@@ -778,24 +787,24 @@ mod tests {
             .expect("insert development identity");
         let mut core =
             SignalweaveCore::new(authenticator, CoreConfig::default()).expect("create core");
-        core.register_channel(signalweave_core::ChannelDefinition::relay_owned(
-            signalweave_core::ChannelId::new(1),
+        core.register_channel(ChannelDefinition::relay_owned(
+            ChannelId::new(1),
             signalweave_core::DeliveryClass::ReliableOrdered,
-            signalweave_core::PersistenceClass::Ephemeral,
+            PersistenceClass::Ephemeral,
             64 * 1024,
         ))
         .expect("register channel 1");
-        core.register_channel(signalweave_core::ChannelDefinition::relay_owned(
-            signalweave_core::ChannelId::new(2),
+        core.register_channel(ChannelDefinition::relay_owned(
+            ChannelId::new(2),
             signalweave_core::DeliveryClass::LatestValue,
-            signalweave_core::PersistenceClass::Stateful,
+            PersistenceClass::Stateful,
             64 * 1024,
         ))
         .expect("register channel 2");
-        core.register_channel(signalweave_core::ChannelDefinition::relay_owned(
-            signalweave_core::ChannelId::new(3),
+        core.register_channel(ChannelDefinition::relay_owned(
+            ChannelId::new(3),
             signalweave_core::DeliveryClass::UnreliableSequenced,
-            signalweave_core::PersistenceClass::Stateful,
+            PersistenceClass::Stateful,
             64 * 1024,
         ))
         .expect("register channel 3");
@@ -803,66 +812,47 @@ mod tests {
         for space_id in [1, 2] {
             core.install_space(
                 session,
-                signalweave_core::SpaceDescriptor {
-                    id: signalweave_core::SpaceId::new(space_id),
-                    local_frame: signalweave_core::CoordinateFrame::Logical,
+                SpaceDescriptor {
+                    id: SpaceId::new(space_id),
+                    local_frame: CoordinateFrame::Logical,
                     parent: None,
-                    epoch: signalweave_core::SpaceEpoch::new(1),
-                    routing: signalweave_core::RoutingPolicy::BroadcastAll,
+                    epoch: SpaceEpoch::new(1),
+                    routing: RoutingPolicy::BroadcastAll,
                 },
             )
             .expect("install space");
         }
         let worker = spawn_worker(TransportIndependentWorker::new(core));
-        tokio::spawn(serve_endpoint(
-            endpoint.clone(),
-            QuicConfig::new(worker.clone()),
-        ));
-        (endpoint, worker, server_address, certificate)
+        let mut config = WebTransportConfig::new(worker.clone());
+        config.path = Arc::from("/webtransport");
+        tokio::spawn(serve_endpoint(endpoint, config));
+        (worker, server_address)
     }
 
-    async fn connect_client(
-        server_address: SocketAddr,
-        certificate: CertificateDer<'static>,
-    ) -> (
-        quinn::Connection,
-        quinn::SendStream,
-        quinn::RecvStream,
-        Codec,
-        Endpoint,
-    ) {
-        let mut roots = RootCertStore::empty();
-        roots.add(certificate).expect("trust localhost certificate");
-        let client_crypto = rustls::ClientConfig::builder()
-            .with_root_certificates(roots)
-            .with_no_client_auth();
-        let client_config = ClientConfig::new(Arc::new(
-            QuicClientConfig::try_from(client_crypto).expect("create QUIC client configuration"),
-        ));
-        let mut client_endpoint = Endpoint::client(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)))
-            .expect("bind QUIC client endpoint");
-        client_endpoint.set_default_client_config(client_config);
-        let connection = tokio::time::timeout(
-            TEST_TIMEOUT,
-            client_endpoint
-                .connect(server_address, "localhost")
-                .expect("start QUIC connection"),
-        )
-        .await
-        .expect("QUIC connection timed out")
-        .expect("complete QUIC connection");
-        let (send, receive) = tokio::time::timeout(TEST_TIMEOUT, connection.open_bi())
+    async fn connect_client(server_address: SocketAddr) -> Connection {
+        let client_config = ClientConfig::builder()
+            .with_bind_default()
+            .with_no_cert_validation()
+            .build();
+        let client_endpoint = Endpoint::client(client_config).expect("create client endpoint");
+        let url = format!("https://127.0.0.1:{}/webtransport", server_address.port());
+        tokio::time::timeout(TEST_TIMEOUT, client_endpoint.connect(&url))
             .await
-            .expect("open stream timed out")
-            .expect("open bidirectional stream");
-        (connection, send, receive, Codec::default(), client_endpoint)
+            .expect("connect timed out")
+            .expect("connect failed")
     }
 
-    async fn perform_handshake(
-        send: &mut quinn::SendStream,
-        receive: &mut quinn::RecvStream,
-        codec: &Codec,
-    ) {
+    async fn open_stream(connection: &Connection) -> (SendStream, RecvStream) {
+        tokio::time::timeout(TEST_TIMEOUT, connection.open_bi())
+            .await
+            .expect("open_bi timed out")
+            .expect("open_bi failed")
+            .await
+            .expect("stream open failed")
+    }
+
+    async fn perform_handshake(send: &mut SendStream, recv: &mut RecvStream) {
+        let codec = Codec::default();
         send.write_all(
             &codec
                 .encode(&Envelope::control(
@@ -870,7 +860,7 @@ mod tests {
                     ControlPayload::Hello(Hello {
                         min_protocol_version: PROTOCOL_VERSION,
                         max_protocol_version: PROTOCOL_VERSION,
-                        client_name: "loopback-test".to_owned(),
+                        client_name: "wt-test".to_owned(),
                         client_version: "0.1.0".to_owned(),
                         capability_bits: 0,
                         max_frame_size: MAX_FRAME_BYTES,
@@ -881,7 +871,7 @@ mod tests {
         )
         .await
         .expect("send Hello");
-        let capabilities = tokio::time::timeout(TEST_TIMEOUT, read_envelope(receive, codec))
+        let capabilities = tokio::time::timeout(TEST_TIMEOUT, read_envelope(recv, &codec))
             .await
             .expect("Capabilities receive timed out")
             .expect("decode Capabilities");
@@ -903,7 +893,7 @@ mod tests {
         )
         .await
         .expect("send Authenticate");
-        let authenticated = tokio::time::timeout(TEST_TIMEOUT, read_envelope(receive, codec))
+        let authenticated = tokio::time::timeout(TEST_TIMEOUT, read_envelope(recv, &codec))
             .await
             .expect("Authenticated receive timed out")
             .expect("decode Authenticated");
@@ -917,12 +907,12 @@ mod tests {
     }
 
     async fn join_and_subscribe(
-        send: &mut quinn::SendStream,
-        _receive: &mut quinn::RecvStream,
-        codec: &Codec,
+        send: &mut SendStream,
+        _recv: &mut RecvStream,
         space_id: u64,
         channel_id: u64,
     ) {
+        let codec = Codec::default();
         send.write_all(
             &codec
                 .encode(&Envelope {
@@ -972,11 +962,9 @@ mod tests {
         .expect("send SubscribeSpace");
     }
 
-    async fn recv_subscription_accepted_and_entity(
-        receive: &mut quinn::RecvStream,
-        codec: &Codec,
-    ) -> u64 {
-        let accepted = tokio::time::timeout(TEST_TIMEOUT, read_envelope(receive, codec))
+    async fn recv_subscription_accepted_and_entity(recv: &mut RecvStream) -> u64 {
+        let codec = Codec::default();
+        let accepted = tokio::time::timeout(TEST_TIMEOUT, read_envelope(recv, &codec))
             .await
             .expect("timeout")
             .expect("decode accepted");
@@ -984,7 +972,7 @@ mod tests {
             accepted.message,
             MessagePayload::Control(ControlPayload::SubscriptionAccepted(_))
         ));
-        let entered = tokio::time::timeout(TEST_TIMEOUT, read_envelope(receive, codec))
+        let entered = tokio::time::timeout(TEST_TIMEOUT, read_envelope(recv, &codec))
             .await
             .expect("timeout")
             .expect("decode entered");

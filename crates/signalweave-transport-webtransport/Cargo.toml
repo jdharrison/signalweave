@@ -1,9 +1,9 @@
 [package]
-name = "signalweave-transport-quic"
+name = "signalweave-transport-webtransport"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Native QUIC adapter for Signalweave"
+description = "WebTransport adapter for Signalweave"
 license.workspace = true
 repository.workspace = true
 publish = false
@@ -15,14 +15,9 @@ path = "src/lib.rs"
 signalweave-core.workspace = true
 signalweave-protocol.workspace = true
 signalweave-transport.workspace = true
-bytes = "1"
-quinn.workspace = true
-rustls.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-
-[dev-dependencies]
-rcgen.workspace = true
+wtransport.workspace = true
 
 [lints]
 workspace = true

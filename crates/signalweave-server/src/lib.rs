@@ -25,6 +25,10 @@ use signalweave_transport_quic::{
 use signalweave_transport_websocket::{
     WebSocketConfig, WorkerHandle, serve_connection, spawn_worker,
 };
+use signalweave_transport_webtransport::{
+    WebTransportConfig, serve_endpoint as serve_webtransport_endpoint,
+    server_endpoint as webtransport_server_endpoint,
+};
 use tower_http::trace::TraceLayer;
 
 /// Server runtime configuration.
@@ -32,7 +36,9 @@ use tower_http::trace::TraceLayer;
 pub struct ServerConfig {
     pub bind_address: SocketAddr,
     pub quic_bind_address: SocketAddr,
+    pub webtransport_bind_address: SocketAddr,
     pub websocket_path: String,
+    pub webtransport_path: String,
 }
 
 impl Default for ServerConfig {
@@ -40,7 +46,9 @@ impl Default for ServerConfig {
         Self {
             bind_address: SocketAddr::from(([127, 0, 0, 1], 8080)),
             quic_bind_address: SocketAddr::from(([127, 0, 0, 1], 8081)),
+            webtransport_bind_address: SocketAddr::from(([127, 0, 0, 1], 8082)),
             websocket_path: "/ws".to_owned(),
+            webtransport_path: "/webtransport".to_owned(),
         }
     }
 }
@@ -49,6 +57,7 @@ impl Default for ServerConfig {
 struct AppState {
     websocket: WebSocketConfig,
     quic_enabled: bool,
+    webtransport_enabled: bool,
 }
 
 /// Build the development router and its bounded single-owner core worker.
@@ -59,13 +68,18 @@ pub fn development_router() -> Result<Router, signalweave_core::CoreError> {
 
 /// Build an HTTP router around an already-created core worker.
 pub fn router_with_worker(worker: WorkerHandle) -> Router {
-    router_with_transports(worker, false)
+    router_with_transports(worker, false, false)
 }
 
-fn router_with_transports(worker: WorkerHandle, quic_enabled: bool) -> Router {
+fn router_with_transports(
+    worker: WorkerHandle,
+    quic_enabled: bool,
+    webtransport_enabled: bool,
+) -> Router {
     let state = Arc::new(AppState {
         websocket: WebSocketConfig::new(worker),
         quic_enabled,
+        webtransport_enabled,
     });
     Router::new()
         .route("/healthz", get(health))
@@ -85,8 +99,15 @@ pub async fn serve(config: ServerConfig) -> Result<(), ServerError> {
     let worker = spawn_worker(TransportIndependentWorker::new(development_core()?));
     let quic = development_quic_endpoint(config.quic_bind_address)?;
     tokio::spawn(serve_quic_endpoint(quic, QuicConfig::new(worker.clone())));
+    let webtransport = development_webtransport_endpoint(config.webtransport_bind_address)?;
+    let mut webtransport_config = WebTransportConfig::new(worker.clone());
+    webtransport_config.path = Arc::from(config.webtransport_path);
+    tokio::spawn(serve_webtransport_endpoint(
+        webtransport,
+        webtransport_config,
+    ));
     let listener = tokio::net::TcpListener::bind(config.bind_address).await?;
-    axum::serve(listener, router_with_transports(worker, true)).await?;
+    axum::serve(listener, router_with_transports(worker, true, true)).await?;
     Ok(())
 }
 
@@ -137,6 +158,9 @@ async fn capabilities(State(state): State<Arc<AppState>>) -> Json<CapabilitiesRe
     if state.quic_enabled {
         transports.push("quic");
     }
+    if state.webtransport_enabled {
+        transports.push("webtransport");
+    }
     Json(CapabilitiesResponse {
         protocol_version: signalweave_protocol::PROTOCOL_VERSION,
         transports,
@@ -150,6 +174,14 @@ async fn websocket(
 ) -> impl IntoResponse {
     let websocket = state.websocket.clone();
     upgrade.on_upgrade(move |socket| serve_connection(socket, websocket))
+}
+
+fn development_webtransport_endpoint(
+    bind_address: SocketAddr,
+) -> Result<signalweave_transport_webtransport::ServerEndpoint, ServerError> {
+    let identity = wtransport::Identity::self_signed(["localhost", "127.0.0.1"])
+        .map_err(|error| ServerError::QuicConfiguration(error.to_string()))?;
+    webtransport_server_endpoint(bind_address, identity).map_err(ServerError::Io)
 }
 
 fn development_quic_endpoint(bind_address: SocketAddr) -> Result<quinn::Endpoint, ServerError> {

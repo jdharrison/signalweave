@@ -48,9 +48,9 @@ Implemented bounded per-session entity-to-cell and cell-to-entity indexes for un
 
 ### Milestone 4 — QUIC and WebTransport
 
-**Status: Initialized.**
+**Status: Completed.**
 
-A native Quinn adapter now carries the existing size-prefixed protocol over one bounded, client-initiated bidirectional reliable stream and shares the single-owner worker, lifecycle fan-out, and envelope bridge with WebSocket. The development server starts it on a separate local UDP listener with an ephemeral development certificate and advertises QUIC only in that composition. Datagram delivery-class mapping, native QUIC real-socket conformance coverage, and WebTransport remain before completion. Preserve one envelope, delivery semantics, conservative datagram budgets, and automatic WebSocket fallback; do not add raw UDP or application-level datagram fragmentation.
+The Quinn adapter now maps `UnreliableSequenced` and `BestEffortEvent` delivery classes to QUIC unreliable datagrams when they fit within the connection's conservative datagram budget, falling back to silent drop when they do not. The same mapping is implemented for the WebTransport adapter. Both adapters read inbound datagrams after authentication and decode them through the shared protocol codec. Real in-process UDP socket conformance tests cover the full handshake, reliable event fan-out, disconnect presence cleanup, and datagram round-trip for both transports. The development server continues to start all three transports and advertise them in capabilities.
 
 ### Milestone 5 — Minimal inference plane
 
