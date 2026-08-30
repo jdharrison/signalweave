@@ -84,3 +84,22 @@ jobs:
       - name: Test (decodes golden fixtures and a live server frame)
         working-directory: crates/signalweave-client-csharp/test
         run: dotnet test
+
+  client-python:
+    name: Python client bindings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Build signalweave-server (so the live-server test starts quickly)
+        run: cargo build -p signalweave-server
+      - name: Install dependencies
+        working-directory: crates/signalweave-client-python/test
+        run: pip install -r requirements.txt
+      - name: Test (decodes golden fixtures and a live server frame)
+        working-directory: crates/signalweave-client-python/test
+        run: pytest

@@ -50,9 +50,11 @@ with no paid service required.
 **Reference clients** — a native Rust client (`signalweave-client-rust`) used as the
 integration-test driver; generated TypeScript FlatBuffers bindings (`signalweave-client-ts`)
 with Node scripts validating decode against both a live server frame and checked-in golden
-fixtures; and generated C# FlatBuffers bindings (`signalweave-client-csharp`, for Unity and
-other .NET consumers) with xunit tests covering the same two cases. All three are proven
-against the same checked-in golden fixtures, closing the cross-language loop.
+fixtures; generated C# FlatBuffers bindings (`signalweave-client-csharp`, for Unity and
+other .NET consumers) with xunit tests covering the same two cases; and generated Python
+FlatBuffers bindings (`signalweave-client-python`) with pytest tests covering the same two
+cases. All four are proven against the same checked-in golden fixtures, closing the
+cross-language loop.
 
 See [`docs/adr`](adr) for the architecture decisions behind these choices, and
 [`AGENTS.md`](../AGENTS.md) for exact public APIs.

@@ -33,6 +33,12 @@ bin/
 obj/
 *.user
 
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
 # OS and editor files
 .DS_Store
 *.swp

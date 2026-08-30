@@ -49,9 +49,10 @@ VENDORED_FLATC=$(find target/debug/build -path '*/out/bin/flatc' -type f -print 
 "$VENDORED_FLATC" --rust -o /tmp/signalweave-rust schemas/signalweave_v1.fbs
 "$VENDORED_FLATC" --ts -o /tmp/signalweave-ts schemas/signalweave_v1.fbs
 "$VENDORED_FLATC" --csharp -o /tmp/signalweave-csharp schemas/signalweave_v1.fbs
+"$VENDORED_FLATC" --python -o /tmp/signalweave-python schemas/signalweave_v1.fbs
 ```
 
-A separately installed compiler may be substituted only when `flatc --version` reports `25.12.19`. TypeScript generation, bindings, and cross-language golden-fixture decode tests are implemented in `crates/signalweave-client-ts`. C# generation, bindings, and golden-fixture decode tests are implemented in `crates/signalweave-client-csharp`, which vendors a matching FlatBuffers C# runtime rather than depending on NuGet's `Google.FlatBuffers` package (its published releases lag behind the pinned `25.12.19` compiler).
+A separately installed compiler may be substituted only when `flatc --version` reports `25.12.19`. TypeScript generation, bindings, and cross-language golden-fixture decode tests are implemented in `crates/signalweave-client-ts`. C# generation, bindings, and golden-fixture decode tests are implemented in `crates/signalweave-client-csharp`, which vendors a matching FlatBuffers C# runtime rather than depending on NuGet's `Google.FlatBuffers` package (its published releases lag behind the pinned `25.12.19` compiler). Python generation, bindings, and golden-fixture decode tests are implemented in `crates/signalweave-client-python`, which depends directly on PyPI's `flatbuffers==25.12.19` package — no version mismatch to work around there, unlike C#.
 
 ## Compatibility rules
 
