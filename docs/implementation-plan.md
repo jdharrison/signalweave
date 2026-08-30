@@ -36,9 +36,9 @@ Implemented the smallest useful transport-neutral core and protocol boundary. Th
 
 ### Milestone 2 — Universal realtime path
 
-**Status: Deferred.**
+**Status: Completed.**
 
-Add Axum health/capability endpoints and binary WebSocket transport first. Build Rust and TypeScript reference clients and demonstrate authentication, nested subscriptions, reliable events, latest-value state, snapshots, transitions, and disconnect cleanup. Generate C# bindings, but treat C# compile validation as explicitly pending until .NET is available. Exit with equivalent tested protocol behavior for implemented clients and no unauthenticated session-state endpoint.
+Implemented the Axum health/capability control plane, bounded single-owner Tokio core worker, binary WebSocket handshake, Rust reference client, and generated TypeScript FlatBuffers bindings. The core now provides bounded entity lifecycle details and atomic, epoch-validated entity transitions. Real in-process TCP tests cover public control-plane endpoints, authentication, namespace isolation, nested subscriptions, ownership rejection, malformed-frame rejection, reliable fan-out, latest-value coalescing, scoped snapshots, transition ordering, and disconnect presence cleanup. The TypeScript Node test starts the Rust server and decodes its live `ProtocolError` WebSocket frame. C# remains deferred because .NET is unavailable.
 
 ### Milestone 3 — Interest management and measurement
 

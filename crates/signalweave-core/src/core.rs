@@ -237,22 +237,53 @@ pub struct PublishOutcome {
     pub disconnected_slow_consumers: Vec<ConnectionId>,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RemovedEntity {
+    pub entity: EntityId,
+    pub session: SessionKey,
+    pub space: SpaceId,
+    pub space_epoch: SpaceEpoch,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EntityTransitionRequest {
+    pub connection: ConnectionId,
+    pub session: SessionKey,
+    pub entity: EntityId,
+    pub source_space: SpaceId,
+    pub source_epoch: SpaceEpoch,
+    pub destination_space: SpaceId,
+    pub destination_epoch: SpaceEpoch,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EntityTransition {
+    pub entity: EntityId,
+    pub session: SessionKey,
+    pub source_space: SpaceId,
+    pub source_epoch: SpaceEpoch,
+    pub destination_space: SpaceId,
+    pub destination_epoch: SpaceEpoch,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct CleanupSummary {
     pub memberships_removed: usize,
     pub subscriptions_removed: usize,
     pub entities_removed: usize,
     pub spaces_removed: usize,
     pub queued_messages_discarded: usize,
+    pub removed_entities: Vec<RemovedEntity>,
 }
 
 impl CleanupSummary {
-    fn add(&mut self, other: Self) {
+    fn add(&mut self, mut other: Self) {
         self.memberships_removed += other.memberships_removed;
         self.subscriptions_removed += other.subscriptions_removed;
         self.entities_removed += other.entities_removed;
         self.spaces_removed += other.spaces_removed;
         self.queued_messages_discarded += other.queued_messages_discarded;
+        self.removed_entities.append(&mut other.removed_entities);
     }
 }
 
@@ -858,6 +889,111 @@ impl<A: Authenticator> SignalweaveCore<A> {
             return Err(CoreError::EntityNotOwned(entity));
         }
         Ok(self.remove_entities_and_anchored_spaces(session_key, BTreeSet::from([entity])))
+    }
+
+    pub fn transition_entity(
+        &mut self,
+        request: EntityTransitionRequest,
+    ) -> Result<EntityTransition, CoreError> {
+        validate_connection_id(request.connection)?;
+        validate_session_key(request.session)?;
+        require_nonzero(request.entity.get(), IdKind::Entity)?;
+        require_nonzero(request.source_space.get(), IdKind::Space)?;
+        require_nonzero(request.source_epoch.get(), IdKind::SpaceEpoch)?;
+        require_nonzero(request.destination_space.get(), IdKind::Space)?;
+        require_nonzero(request.destination_epoch.get(), IdKind::SpaceEpoch)?;
+
+        let principal = self.authenticated_principal(request.connection)?;
+        require_namespace_write(&principal, request.session.namespace)?;
+        require_session_write(&principal, request.session)?;
+        let source = SpaceKey::new(request.session, request.source_space);
+        let destination = SpaceKey::new(request.session, request.destination_space);
+        require_space_write(&principal, source)?;
+        require_space_write(&principal, destination)?;
+        self.require_membership(request.connection, request.session)?;
+        self.require_subscription(request.connection, source)?;
+        self.require_subscription(request.connection, destination)?;
+
+        let session = self
+            .sessions
+            .get(&request.session)
+            .ok_or(CoreError::SessionNotFound(request.session))?;
+        let source_descriptor = session
+            .spaces
+            .get(&request.source_space)
+            .ok_or(CoreError::SpaceNotFound(source))?;
+        if source_descriptor.epoch != request.source_epoch {
+            return Err(CoreError::SpaceEpochMismatch {
+                expected: source_descriptor.epoch,
+                received: request.source_epoch,
+            });
+        }
+        let destination_descriptor = session
+            .spaces
+            .get(&request.destination_space)
+            .ok_or(CoreError::SpaceNotFound(destination))?;
+        if destination_descriptor.epoch != request.destination_epoch {
+            return Err(CoreError::SpaceEpochMismatch {
+                expected: destination_descriptor.epoch,
+                received: request.destination_epoch,
+            });
+        }
+        let record = session
+            .entities
+            .get(&request.entity)
+            .ok_or(CoreError::EntityNotFound(request.entity))?;
+        if record.owner_connection != request.connection {
+            return Err(CoreError::EntityNotOwned(request.entity));
+        }
+        if record.space != request.source_space || record.space_epoch != request.source_epoch {
+            return Err(CoreError::EntitySpaceMismatch(request.entity));
+        }
+
+        let transition = EntityTransition {
+            entity: request.entity,
+            session: request.session,
+            source_space: request.source_space,
+            source_epoch: request.source_epoch,
+            destination_space: request.destination_space,
+            destination_epoch: request.destination_epoch,
+        };
+        if request.source_space == request.destination_space
+            && request.source_epoch == request.destination_epoch
+        {
+            return Ok(transition);
+        }
+
+        let session = self
+            .sessions
+            .get_mut(&request.session)
+            .ok_or(CoreError::SessionNotFound(request.session))?;
+        let record = session
+            .entities
+            .get_mut(&request.entity)
+            .ok_or(CoreError::EntityNotFound(request.entity))?;
+        record.space = request.destination_space;
+        record.space_epoch = request.destination_epoch;
+        session.state.retain(|key, _| {
+            key.space != request.source_space
+                || key.space_epoch != request.source_epoch
+                || key.entity != Some(request.entity)
+        });
+        session.recompute_state_bytes();
+        session.sequences.retain(|key, _| {
+            key.space != request.source_space
+                || key.space_epoch != request.source_epoch
+                || key.entity != Some(request.entity)
+        });
+        for connection in self.connections.values_mut() {
+            connection.outbound.purge(|message| {
+                message.namespace == request.session.namespace
+                    && message.session == request.session.session
+                    && message.space == request.source_space
+                    && message.space_epoch == request.source_epoch
+                    && message.entity == Some(request.entity)
+            });
+        }
+        Ok(transition)
     }
 
     pub fn publish(&mut self, request: PublishRequest) -> Result<PublishOutcome, CoreError> {
@@ -1501,11 +1637,21 @@ impl<A: Authenticator> SignalweaveCore<A> {
 
         let mut summary = CleanupSummary::default();
         if let Some(session) = self.sessions.get_mut(&session_key) {
-            let entities_before = session.entities.len();
+            summary.removed_entities = session
+                .entities
+                .values()
+                .filter(|entity| removed_entities.contains(&entity.id))
+                .map(|entity| RemovedEntity {
+                    entity: entity.id,
+                    session: session_key,
+                    space: entity.space,
+                    space_epoch: entity.space_epoch,
+                })
+                .collect();
+            summary.entities_removed = summary.removed_entities.len();
             session
                 .entities
                 .retain(|id, _| !removed_entities.contains(id));
-            summary.entities_removed = entities_before.saturating_sub(session.entities.len());
 
             for space in &removed_spaces {
                 if let Some(descriptor) = session.spaces.remove(space) {

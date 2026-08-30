@@ -18,8 +18,9 @@ pub use authority::{
     AuthorityTransform, ChannelDefinition, ProposedMessage, RelayOwned,
 };
 pub use core::{
-    CleanupSummary, CoreConfig, CoreError, IdKind, PublishOutcome, PublishRateLimit,
-    PublishRequest, QueueActivity, SignalweaveCore,
+    CleanupSummary, CoreConfig, CoreError, EntityTransition, EntityTransitionRequest, IdKind,
+    PublishOutcome, PublishRateLimit, PublishRequest, QueueActivity, RemovedEntity,
+    SignalweaveCore,
 };
 pub use ids::{
     ChannelId, ConnectionId, EntityId, NamespaceId, PrincipalId, SessionId, SessionKey, SpaceEpoch,

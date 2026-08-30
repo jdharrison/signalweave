@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 
 use crate::{
-    Authenticator, CleanupSummary, ConnectionId, CoreError, Credentials, EntityId, OutboundMessage,
-    PrincipalId, PublishOutcome, PublishRequest, SessionKey, SessionSnapshot, SignalweaveCore,
-    SpaceEpoch, SpaceKey,
+    Authenticator, CleanupSummary, ConnectionId, CoreError, Credentials, EntityId,
+    EntityTransition, EntityTransitionRequest, OutboundMessage, PrincipalId, PublishOutcome,
+    PublishRequest, SessionKey, SessionSnapshot, SignalweaveCore, SpaceEpoch, SpaceKey,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -39,6 +39,7 @@ pub enum Command {
         session: SessionKey,
         entity: EntityId,
     },
+    TransitionEntity(EntityTransitionRequest),
     Publish(PublishRequest),
     Snapshot {
         connection: ConnectionId,
@@ -62,6 +63,7 @@ pub enum CommandResult {
     Unsubscribed(CleanupSummary),
     EntitySpawned(EntityId),
     EntityRemoved(CleanupSummary),
+    EntityTransitioned(EntityTransition),
     Published(PublishOutcome),
     Snapshot(SessionSnapshot),
     Outbound(Vec<OutboundMessage>),
@@ -139,6 +141,10 @@ impl<A: Authenticator> TransportIndependentWorker<A> {
                 .core
                 .remove_entity(connection, session, entity)
                 .map(CommandResult::EntityRemoved),
+            Command::TransitionEntity(request) => self
+                .core
+                .transition_entity(request)
+                .map(CommandResult::EntityTransitioned),
             Command::Publish(request) => self.core.publish(request).map(CommandResult::Published),
             Command::Snapshot {
                 connection,

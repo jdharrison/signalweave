@@ -1,0 +1,20 @@
+{
+  "name": "@signalweave/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test:decode": "tsx test/decode-live-server.ts"
+  },
+  "dependencies": {
+    "flatbuffers": "25.9.23"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+        "@types/ws": "8.5.14",
+    "tsx": "4.19.3",
+    "typescript": "5.8.3",
+    "ws": "8.21.3"
+  }
+}

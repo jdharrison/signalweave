@@ -2,6 +2,9 @@
 members = [
     "crates/signalweave-core",
     "crates/signalweave-protocol",
+    "crates/signalweave-server",
+    "crates/signalweave-transport-websocket",
+    "crates/signalweave-client-rust",
 ]
 resolver = "3"
 
@@ -13,11 +16,29 @@ license = "MIT"
 repository = "https://github.com/jdharrison/signalweave"
 
 [workspace.dependencies]
+# Core protocol dependencies
 flatbuffers = "=25.12.19"
 # Cargo ignores SemVer build metadata in requirements; Cargo.lock pins the
 # matching FlatBuffers 25.12.19 build/compiler artifacts.
 flatbuffers-build = "=0.2.4"
 flatc-fork = "=0.6.0"
+# Internal crates
+signalweave-core = { path = "crates/signalweave-core" }
+signalweave-protocol = { path = "crates/signalweave-protocol" }
+signalweave-transport-websocket = { path = "crates/signalweave-transport-websocket" }
+# Async runtime
+tokio = { version = "1.53", features = ["full"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+# HTTP + WebSocket
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.7", features = ["trace"] }
+tokio-tungstenite = { version = "0.30", features = ["connect", "handshake"] }
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [workspace.lints.rust]
 # Handwritten crates deny unsafe code. The protocol crate locally allows it only

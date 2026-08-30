@@ -1,0 +1,35 @@
+[package]
+name = "signalweave-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Signalweave HTTP control plane and WebSocket server"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "signalweave-server"
+path = "src/main.rs"
+
+[dependencies]
+signalweave-core.workspace = true
+signalweave-protocol.workspace = true
+signalweave-transport-websocket.workspace = true
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tower-http.workspace = true
+
+[dev-dependencies]
+signalweave-client-rust = { path = "../signalweave-client-rust" }
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
+
+[lints]
+workspace = true

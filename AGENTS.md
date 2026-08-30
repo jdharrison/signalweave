@@ -65,7 +65,7 @@ Crates added in future milestones (do not create empty scaffolding):
 |---|---|
 | 0 — Discovery, workspace, CI, ADRs | **Complete** |
 | 1 — Core + Protocol vertical slice | **Complete** |
-| 2 — WebSocket server + clients | **Next** |
+| 2 — WebSocket server + clients | **Complete** — WebSocket vertical slice, presence/transition lifecycle, Rust client, and TS live-frame decode validation exist |
 | 3 — Interest management + load runner | Deferred |
 | 4 — QUIC + WebTransport | Deferred |
 | 5 — Inference plane | Deferred |

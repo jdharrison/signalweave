@@ -5,11 +5,11 @@ use std::time::{Duration, Instant};
 use signalweave_core::{
     AccessGrant, AuthenticatedPrincipal, AuthorizationGrants, ChannelDefinition, ChannelId,
     ChannelScope, CoalesceKey, Command, CommandResult, CoordinateFrame, CoreConfig, CoreError,
-    Credentials, DeliveryClass, DevAuthenticator, EntityId, HarnessError, IdKind, JournalRecord,
-    JournalSink, NamespaceId, NoopJournalSink, OutboundMessage, OutboundQueueConfig, ParentAnchor,
-    PersistenceClass, PrincipalId, PublishRateLimit, PublishRequest, RoutingPolicy, SessionId,
-    SessionKey, SignalweaveCore, SpaceDescriptor, SpaceEpoch, SpaceId, SpaceKey,
-    TransportIndependentWorker, WorkerHarness,
+    Credentials, DeliveryClass, DevAuthenticator, EntityId, EntityTransitionRequest, HarnessError,
+    IdKind, JournalRecord, JournalSink, NamespaceId, NoopJournalSink, OutboundMessage,
+    OutboundQueueConfig, ParentAnchor, PersistenceClass, PrincipalId, PublishRateLimit,
+    PublishRequest, RoutingPolicy, SessionId, SessionKey, SignalweaveCore, SpaceDescriptor,
+    SpaceEpoch, SpaceId, SpaceKey, TransportIndependentWorker, WorkerHarness,
 };
 
 const NAMESPACE_A: NamespaceId = NamespaceId::new(10);
@@ -577,13 +577,172 @@ fn transport_loss_removes_owned_entities_and_anchored_descendants() {
     .expect("child installation");
     core.subscribe(bob, SpaceKey::new(session_a(), SECONDARY))
         .expect("bob child subscription");
-    core.spawn_entity(bob, SpaceKey::new(session_a(), SECONDARY), EPOCH_ONE)
+    let child_entity = core
+        .spawn_entity(bob, SpaceKey::new(session_a(), SECONDARY), EPOCH_ONE)
         .expect("bob child entity");
 
     let cleanup = core.transport_lost(alice).expect("transport cleanup");
     assert_eq!(cleanup.entities_removed, 2);
     assert_eq!(cleanup.spaces_removed, 1);
+    assert_eq!(
+        cleanup
+            .removed_entities
+            .iter()
+            .map(|removed| (
+                removed.entity,
+                removed.session,
+                removed.space,
+                removed.space_epoch
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            (anchor, session_a(), ROOT, EPOCH_ONE),
+            (child_entity, session_a(), SECONDARY, EPOCH_ONE),
+        ]
+    );
     assert_eq!(core.subscription_count(bob), Some(0));
+}
+
+#[test]
+fn transition_entity_moves_owned_entity_and_invalidates_source_data() {
+    let mut core = make_core(CoreConfig::default());
+    core.install_space(session_a(), root_descriptor(SECONDARY))
+        .expect("secondary space installation");
+    let alice = connect_authenticated(&mut core, "alice");
+    join_and_subscribe(&mut core, alice, ROOT);
+    core.subscribe(alice, SpaceKey::new(session_a(), SECONDARY))
+        .expect("secondary subscription");
+    let entity = core
+        .spawn_entity(alice, SpaceKey::new(session_a(), ROOT), EPOCH_ONE)
+        .expect("entity spawn");
+    core.publish(publish_request(
+        alice,
+        ROOT,
+        EPOCH_ONE,
+        entity,
+        STATE_CHANNEL,
+        1,
+        0,
+        b"source state",
+    ))
+    .expect("source state publication");
+    assert_eq!(core.sequence_key_count(session_a()), Some(1));
+
+    let transition = core
+        .transition_entity(EntityTransitionRequest {
+            connection: alice,
+            session: session_a(),
+            entity,
+            source_space: ROOT,
+            source_epoch: EPOCH_ONE,
+            destination_space: SECONDARY,
+            destination_epoch: EPOCH_ONE,
+        })
+        .expect("owned transition");
+    assert_eq!(transition.entity, entity);
+    assert_eq!(transition.session, session_a());
+    assert_eq!(transition.source_space, ROOT);
+    assert_eq!(transition.destination_space, SECONDARY);
+    assert_eq!(core.sequence_key_count(session_a()), Some(0));
+    assert!(
+        core.drain_outbound(alice)
+            .expect("drain source messages")
+            .is_empty()
+    );
+
+    let snapshot = core.snapshot(alice, session_a()).expect("session snapshot");
+    assert!(snapshot.state.is_empty());
+    assert!(
+        snapshot
+            .entities
+            .iter()
+            .any(|current| current.id == entity && current.space == SECONDARY)
+    );
+    assert_eq!(
+        core.publish(publish_request(
+            alice,
+            ROOT,
+            EPOCH_ONE,
+            entity,
+            EVENT_CHANNEL,
+            1,
+            0,
+            b"stale source publication",
+        )),
+        Err(CoreError::EntitySpaceMismatch(entity))
+    );
+}
+
+#[test]
+fn transition_entity_rejects_non_owner_without_partial_update() {
+    let mut core = make_core(CoreConfig::default());
+    core.install_space(session_a(), root_descriptor(SECONDARY))
+        .expect("secondary space installation");
+    let alice = connect_authenticated(&mut core, "alice");
+    let bob = connect_authenticated(&mut core, "bob");
+    for connection in [alice, bob] {
+        join_and_subscribe(&mut core, connection, ROOT);
+        core.subscribe(connection, SpaceKey::new(session_a(), SECONDARY))
+            .expect("secondary subscription");
+    }
+    let entity = core
+        .spawn_entity(alice, SpaceKey::new(session_a(), ROOT), EPOCH_ONE)
+        .expect("entity spawn");
+
+    assert_eq!(
+        core.transition_entity(EntityTransitionRequest {
+            connection: bob,
+            session: session_a(),
+            entity,
+            source_space: ROOT,
+            source_epoch: EPOCH_ONE,
+            destination_space: SECONDARY,
+            destination_epoch: EPOCH_ONE,
+        }),
+        Err(CoreError::EntityNotOwned(entity))
+    );
+    let snapshot = core.snapshot(alice, session_a()).expect("session snapshot");
+    assert!(
+        snapshot
+            .entities
+            .iter()
+            .any(|current| current.id == entity && current.space == ROOT)
+    );
+}
+
+#[test]
+fn transition_entity_requires_both_subscriptions_without_partial_update() {
+    let mut core = make_core(CoreConfig::default());
+    core.install_space(session_a(), root_descriptor(SECONDARY))
+        .expect("secondary space installation");
+    let alice = connect_authenticated(&mut core, "alice");
+    join_and_subscribe(&mut core, alice, ROOT);
+    let entity = core
+        .spawn_entity(alice, SpaceKey::new(session_a(), ROOT), EPOCH_ONE)
+        .expect("entity spawn");
+
+    assert_eq!(
+        core.transition_entity(EntityTransitionRequest {
+            connection: alice,
+            session: session_a(),
+            entity,
+            source_space: ROOT,
+            source_epoch: EPOCH_ONE,
+            destination_space: SECONDARY,
+            destination_epoch: EPOCH_ONE,
+        }),
+        Err(CoreError::SubscriptionRequired(SpaceKey::new(
+            session_a(),
+            SECONDARY
+        )))
+    );
+    let snapshot = core.snapshot(alice, session_a()).expect("session snapshot");
+    assert!(
+        snapshot
+            .entities
+            .iter()
+            .any(|current| current.id == entity && current.space == ROOT)
+    );
 }
 
 #[test]
@@ -818,6 +977,37 @@ fn zero_ids_are_rejected_at_core_boundaries() {
         )),
         Err(CoreError::ReservedZeroId(IdKind::Channel))
     );
+}
+
+#[test]
+fn worker_handles_entity_transition_command() {
+    let mut core = make_core(CoreConfig::default());
+    core.install_space(session_a(), root_descriptor(SECONDARY))
+        .expect("secondary space installation");
+    let alice = connect_authenticated(&mut core, "alice");
+    join_and_subscribe(&mut core, alice, ROOT);
+    core.subscribe(alice, SpaceKey::new(session_a(), SECONDARY))
+        .expect("secondary subscription");
+    let entity = core
+        .spawn_entity(alice, SpaceKey::new(session_a(), ROOT), EPOCH_ONE)
+        .expect("entity spawn");
+    let mut worker = TransportIndependentWorker::new(core);
+
+    assert!(matches!(
+        worker.handle(Command::TransitionEntity(EntityTransitionRequest {
+            connection: alice,
+            session: session_a(),
+            entity,
+            source_space: ROOT,
+            source_epoch: EPOCH_ONE,
+            destination_space: SECONDARY,
+            destination_epoch: EPOCH_ONE,
+        })),
+        Ok(CommandResult::EntityTransitioned(transition))
+            if transition.entity == entity
+                && transition.source_space == ROOT
+                && transition.destination_space == SECONDARY
+    ));
 }
 
 #[test]
