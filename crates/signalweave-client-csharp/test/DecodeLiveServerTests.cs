@@ -49,8 +49,11 @@ public class DecodeLiveServerTests
 
     private static async Task<byte[]> ReceiveServerFrameAsync()
     {
+        // Generous window: a cold `cargo run` (uncached CI dependencies) can take well over
+        // a minute before the server is listening, even though a pre-warmed local build is
+        // instant.
         Exception lastError = null;
-        for (var attempt = 0; attempt < 200; attempt++)
+        for (var attempt = 0; attempt < 300; attempt++)
         {
             try
             {
@@ -66,7 +69,7 @@ public class DecodeLiveServerTests
             catch (Exception error)
             {
                 lastError = error;
-                await Task.Delay(50);
+                await Task.Delay(200);
             }
         }
         throw new TimeoutException("Rust server did not accept a WebSocket connection", lastError);

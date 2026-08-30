@@ -28,7 +28,9 @@ try {
 }
 
 async function receiveServerFrame(): Promise<Uint8Array> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+  // Generous window: a cold `cargo run` (uncached CI dependencies) can take well over a
+  // minute before the server is listening, even though a pre-warmed local build is instant.
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     try {
       return await new Promise<Uint8Array>((resolveFrame, reject) => {
         const socket = new WebSocket("ws://127.0.0.1:8080/ws");
@@ -40,7 +42,7 @@ async function receiveServerFrame(): Promise<Uint8Array> {
         socket.once("error", reject);
       });
     } catch {
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 200));
     }
   }
   throw new Error("Rust server did not accept a WebSocket connection");

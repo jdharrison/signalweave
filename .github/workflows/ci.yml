@@ -52,8 +52,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Build protocol crate (generates vendored flatc + bindings input)
-        run: cargo build -p signalweave-protocol
+      - name: Build signalweave-server (so the live-server test starts quickly)
+        run: cargo build -p signalweave-server
       - name: Install npm dependencies
         working-directory: crates/signalweave-client-ts
         run: npm ci
@@ -79,8 +79,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
-      - name: Build protocol crate (generates vendored flatc + bindings input)
-        run: cargo build -p signalweave-protocol
+      - name: Build signalweave-server (so the live-server test starts quickly)
+        run: cargo build -p signalweave-server
       - name: Test (decodes golden fixtures and a live server frame)
         working-directory: crates/signalweave-client-csharp/test
         run: dotnet test
