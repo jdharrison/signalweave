@@ -4,7 +4,7 @@ SIGNALWEAVE is a reusable distributed realtime session, event, state, and infere
 
 ## Standalone and self-hosted
 
-Signalweave is a general-purpose realtime relay, not a product tied to any particular front end or control plane. Run it standalone and self-hosted, the way you'd self-host Redis or Postgres, with zero dependency on any hosted service. A managed instance is available at [signalweave.host](https://signalweave.host) for teams that don't want to operate their own, but that hosted offering, and any control-panel UI built on top of it, is a separate, optional consumer of this open-source core, not a requirement for using it. This repository is open-source under the [MIT License](LICENSE) and contains the complete server source.
+Signalweave is a general-purpose realtime relay, not a product tied to any particular front end or control plane. Run it standalone and self-hosted, the way you'd self-host Redis or Postgres, with zero dependency on any hosted service. A managed instance is available at [signalweave.host](https://signalweave.host) for teams that don't want to operate their own, but that hosted offering, and any control-panel UI built on top of it, is a separate, optional consumer of this open-source core, not a requirement for using it. This repository is open-source under the [Apache License 2.0](LICENSE) and contains the complete server source.
 
 ## Current feature set
 
@@ -15,7 +15,7 @@ Signalweave is a general-purpose realtime relay, not a product tied to any parti
 - Three interchangeable realtime transports sharing one bounded single-owner Tokio worker and protocol bridge: binary WebSocket (the universal baseline), plus native QUIC and browser WebTransport, which also map unreliable/best-effort traffic to datagrams. All three have real-socket conformance coverage.
 - Uniform 2D/3D spatial routing for replaceable state, with owner-updated local positions, cell indexes, radius filtering, optional exact distance checks, and reliable-event bypass.
 - A bounded local load runner for broadcast, topic, 2D-grid, and 3D-grid scenarios with measured publish latency, delivery, queue, and machine metadata.
-- An optional, adjacent inference plane: a bounded per-request provider queue, a provider-neutral capability/request model, and a deterministic tool-call gateway that lets model output propose state changes without ever mutating state directly. Disabled by default; adds no dependency to the core or protocol crates beyond a handful of additive wire message kinds, and the relay is provably unaffected when it's off.
+- An integrated inference plane: a bounded per-request provider queue, a provider-neutral capability/request model, and a deterministic tool-call gateway that lets model output propose state changes without ever mutating state directly.
 - Reference Rust and TypeScript clients. The TypeScript package uses generated FlatBuffers bindings and validates decoding both a live frame from the Rust server and checked-in golden fixtures.
 
 See [`docs/implementation-plan.md`](docs/implementation-plan.md) and [`docs/adr`](docs/adr) for delivery status and architecture decisions.
@@ -82,4 +82,4 @@ The core assigns connection and entity identities server-side, requires authenti
 
 ## License
 
-[MIT](LICENSE)
+[Apache License 2.0](LICENSE)
