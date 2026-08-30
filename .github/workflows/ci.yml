@@ -41,3 +41,46 @@ jobs:
       - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  client-ts:
+    name: TypeScript client bindings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build protocol crate (generates vendored flatc + bindings input)
+        run: cargo build -p signalweave-protocol
+      - name: Install npm dependencies
+        working-directory: crates/signalweave-client-ts
+        run: npm ci
+      - name: Type-check
+        working-directory: crates/signalweave-client-ts
+        run: npm run check
+      - name: Decode checked-in golden fixtures
+        working-directory: crates/signalweave-client-ts
+        run: |
+          npm run test:decode-fixture
+          npm run test:decode-tool-call-completed
+      - name: Decode a live frame from the Rust server
+        working-directory: crates/signalweave-client-ts
+        run: npm run test:decode
+
+  client-csharp:
+    name: C# client bindings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Build protocol crate (generates vendored flatc + bindings input)
+        run: cargo build -p signalweave-protocol
+      - name: Test (decodes golden fixtures and a live server frame)
+        working-directory: crates/signalweave-client-csharp/test
+        run: dotnet test

@@ -56,6 +56,7 @@ signalweave/
     ├── signalweave-inference-coordinator   ← runs an AI identity as an ordinary core connection
     ├── signalweave-client-rust             ← native reference client, integration-test driver
     ├── signalweave-client-ts               ← generated TypeScript bindings, Node decode scripts
+    ├── signalweave-client-csharp           ← generated C# bindings, xunit decode tests (not a Cargo member)
     └── signalweave-loadtest                ← bounded local routing scenarios and measurement
 ```
 
@@ -512,10 +513,10 @@ as historical context rather than an active plan for this repo.
 ```
 Rust: 1.98.0 stable (rust-toolchain.toml pins this)
 Cargo workspace resolver: 3, edition: 2024, rust-version: 1.88
-Available: cargo, rustfmt, clippy, Node 22.23.2, npm 10.9.8, Docker 29.7.2, gh 2.98.0
-Absent: system flatc (vendored via Cargo), .NET, Terraform, OpenTofu
+Available: cargo, rustfmt, clippy, Node 22.23.2, npm 10.9.8, .NET SDK 10.0.111, Docker 29.7.2, gh 2.98.0
+Absent: system flatc (vendored via Cargo), Terraform, OpenTofu
 GitHub: jdharrison/signalweave (public), SSH remote, gh authenticated
-CI: .github/workflows/ci.yml — format + clippy + test + doc + rustsec/audit-check@v2.0.0
+CI: .github/workflows/ci.yml — Rust (format/clippy/test/doc), dependency audit, TypeScript client, C# client
 ```
 
 Workspace lints (inherited by all crates via `[lints] workspace = true`):

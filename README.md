@@ -16,7 +16,7 @@ Signalweave is a general-purpose realtime relay, not a product tied to any parti
 - Uniform 2D/3D spatial routing for replaceable state, with owner-updated local positions, cell indexes, radius filtering, optional exact distance checks, and reliable-event bypass.
 - A bounded local load runner for broadcast, topic, 2D-grid, and 3D-grid scenarios with measured publish latency, delivery, queue, and machine metadata.
 - An integrated inference plane: a bounded per-request provider queue, a provider-neutral capability/request model, and a deterministic tool-call gateway that lets model output propose state changes without ever mutating state directly.
-- Reference Rust and TypeScript clients. The TypeScript package uses generated FlatBuffers bindings and validates decoding both a live frame from the Rust server and checked-in golden fixtures.
+- Reference clients in Rust, TypeScript, and C#. The TypeScript and C# packages use generated FlatBuffers bindings and validate decoding both a live frame from the Rust server and checked-in golden fixtures, proving cross-language wire compatibility.
 
 See [`docs/status.md`](docs/status.md) and [`docs/adr`](docs/adr) for what's implemented and the architecture decisions behind it.
 
@@ -25,6 +25,7 @@ See [`docs/status.md`](docs/status.md) and [`docs/adr`](docs/adr) for what's imp
 - The pinned current-stable Rust 1.98.0 toolchain with rustfmt and Clippy. [`rust-toolchain.toml`](rust-toolchain.toml) installs these automatically through rustup.
 - A C++ compiler and CMake for the pinned vendored FlatBuffers compiler used during protocol builds.
 - Node.js, only if you're working on the TypeScript client bindings or running its decode smoke tests.
+- A .NET SDK (10.0+), only if you're working on the C# client bindings or running its tests.
 - Docker is optional and is not needed for ordinary Rust development.
 
 A system `flatc` installation is not required. Cargo builds the pinned FlatBuffers 25.12.19 compiler from the `flatc-fork` crate and generates Rust bindings into `OUT_DIR`.
@@ -67,6 +68,7 @@ The two `write_*_fixture` commands regenerate the checked-in protocol golden fix
 - [`crates/signalweave-inference-coordinator`](crates/signalweave-inference-coordinator): runs an AI identity as an ordinary core connection and drives providers/tools.
 - [`crates/signalweave-client-rust`](crates/signalweave-client-rust): native reference client and integration-test driver.
 - [`crates/signalweave-client-ts`](crates/signalweave-client-ts): generated TypeScript FlatBuffers bindings and Node decode-validation scripts.
+- [`crates/signalweave-client-csharp`](crates/signalweave-client-csharp): generated C# FlatBuffers bindings and xunit decode-validation tests (Unity-compatible; not a Cargo workspace member).
 - [`crates/signalweave-loadtest`](crates/signalweave-loadtest): bounded local routing scenarios and measurement output.
 - [`docs/adr`](docs/adr): accepted architecture records.
 

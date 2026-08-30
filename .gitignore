@@ -28,6 +28,11 @@
 node_modules/
 coverage/
 
+# .NET / C#
+bin/
+obj/
+*.user
+
 # OS and editor files
 .DS_Store
 *.swp

@@ -51,7 +51,7 @@ VENDORED_FLATC=$(find target/debug/build -path '*/out/bin/flatc' -type f -print 
 "$VENDORED_FLATC" --csharp -o /tmp/signalweave-csharp schemas/signalweave_v1.fbs
 ```
 
-A separately installed compiler may be substituted only when `flatc --version` reports `25.12.19`. TypeScript generation, bindings, and cross-language golden-fixture decode tests are implemented in `crates/signalweave-client-ts`. C# generation is documented for compatibility work but its bindings and golden tests are not yet exercised; a .NET SDK/runtime is not available in the current development environment.
+A separately installed compiler may be substituted only when `flatc --version` reports `25.12.19`. TypeScript generation, bindings, and cross-language golden-fixture decode tests are implemented in `crates/signalweave-client-ts`. C# generation, bindings, and golden-fixture decode tests are implemented in `crates/signalweave-client-csharp`, which vendors a matching FlatBuffers C# runtime rather than depending on NuGet's `Google.FlatBuffers` package (its published releases lag behind the pinned `25.12.19` compiler).
 
 ## Compatibility rules
 
