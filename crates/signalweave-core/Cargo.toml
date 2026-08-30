@@ -1,0 +1,15 @@
+[package]
+name = "signalweave-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Transport-neutral session and realtime state core for Signalweave"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true

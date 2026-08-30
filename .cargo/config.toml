@@ -1,0 +1,8 @@
+[alias]
+check-all = "check --workspace --all-targets --all-features"
+lint = "clippy --workspace --all-targets --all-features -- -D warnings"
+test-all = "test --workspace --all-targets --all-features"
+
+[net]
+git-fetch-with-cli = true
+retry = 2
