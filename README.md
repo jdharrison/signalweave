@@ -1,10 +1,10 @@
-# SIGNALWEAVE
+# WOVEN
 
-SIGNALWEAVE is a reusable distributed realtime session, event, state, and inference network. The implementation is Rust-first, transport-independent at its core, and designed for browser, Unity/C#, and native clients without embedding application-specific simulation rules.
+WOVEN (WVN) is a reusable distributed realtime session, event, state, and inference network. The implementation is Rust-first, transport-independent at its core, and designed for browser, Unity/C#, and native clients without embedding application-specific simulation rules.
 
 ## Standalone and self-hosted
 
-Signalweave is a general-purpose realtime relay, not a product tied to any particular front end or control plane. Run it standalone and self-hosted, the way you'd self-host Redis or Postgres, with zero dependency on any hosted service. A managed instance is available at [signalweave.host](https://signalweave.host) for teams that don't want to operate their own, but that hosted offering, and any control-panel UI built on top of it, is a separate, optional consumer of this open-source core, not a requirement for using it. This repository is open-source under the [Apache License 2.0](LICENSE) and contains the complete server source.
+WOVEN is a general-purpose realtime relay, not a product tied to any particular front end or control plane. Run it standalone and self-hosted, the way you'd self-host Redis or Postgres, with zero dependency on any hosted service. A managed instance is available at [woven.host](https://woven.host) for teams that don't want to operate their own, but that hosted offering, and any control-panel UI built on top of it, is a separate, optional consumer of this open-source core, not a requirement for using it. This repository is open-source under the [Apache License 2.0](LICENSE) and contains the complete server source.
 
 ## Current feature set
 
@@ -35,7 +35,7 @@ A system `flatc` installation is not required. Cargo builds the pinned FlatBuffe
 
 ```sh
 cargo test --workspace --all-targets --all-features
-cargo run -p signalweave-server
+cargo run -p woven-server
 ```
 
 The server listens on `127.0.0.1:8080` (WebSocket at `/ws`), `127.0.0.1:8081` (QUIC), and `127.0.0.1:8082` (WebTransport), using an ephemeral self-signed development certificate for the two UDP-based transports.
@@ -48,37 +48,37 @@ cargo check-all
 cargo lint
 cargo test-all
 cargo doc --workspace --no-deps
-cargo run -p signalweave-protocol --example write_golden
-cargo run -p signalweave-protocol --example write_tool_call_completed_fixture
+cargo run -p woven-protocol --example write_golden
+cargo run -p woven-protocol --example write_tool_call_completed_fixture
 ```
 
 The two `write_*_fixture` commands regenerate the checked-in protocol golden fixtures and should only produce a diff when the protocol intentionally changes.
 
 ## Workspace
 
-- [`crates/signalweave-core`](crates/signalweave-core): transport-neutral sessions, spaces, ownership, authority, state, queues, and worker harness.
-- [`crates/signalweave-protocol`](crates/signalweave-protocol): FlatBuffers schema, generated Rust bindings, bounded framing, validation, and fixtures.
-- [`crates/signalweave-transport`](crates/signalweave-transport): shared worker handle, entity-lifecycle fan-out, and protocol bridge used by every transport adapter.
-- [`crates/signalweave-transport-websocket`](crates/signalweave-transport-websocket): binary WebSocket adapter, the universal baseline transport.
-- [`crates/signalweave-transport-quic`](crates/signalweave-transport-quic): native QUIC adapter (Quinn) with reliable streams and unreliable datagrams.
-- [`crates/signalweave-transport-webtransport`](crates/signalweave-transport-webtransport): browser WebTransport adapter with reliable streams and unreliable datagrams.
-- [`crates/signalweave-server`](crates/signalweave-server): Axum control plane and development server composition.
-- [`crates/signalweave-inference-core`](crates/signalweave-inference-core): capability/request/provider data model and the `Provider` trait for the optional inference plane.
-- [`crates/signalweave-inference-tools`](crates/signalweave-inference-tools): bounded tool registry and deterministic tool-call gateway; models propose, the gateway decides.
-- [`crates/signalweave-inference-test-provider`](crates/signalweave-inference-test-provider): deterministic, scripted provider used in tests and local development.
-- [`crates/signalweave-inference-coordinator`](crates/signalweave-inference-coordinator): runs an AI identity as an ordinary core connection and drives providers/tools.
-- [`crates/signalweave-client-rust`](crates/signalweave-client-rust): native reference client and integration-test driver.
-- [`crates/signalweave-client-ts`](crates/signalweave-client-ts): generated TypeScript FlatBuffers bindings and Node decode-validation scripts.
-- [`crates/signalweave-client-csharp`](crates/signalweave-client-csharp): generated C# FlatBuffers bindings and xunit decode-validation tests (Unity-compatible; not a Cargo workspace member).
-- [`crates/signalweave-client-python`](crates/signalweave-client-python): generated Python FlatBuffers bindings and pytest decode-validation tests (not a Cargo workspace member).
-- [`crates/signalweave-loadtest`](crates/signalweave-loadtest): bounded local routing scenarios and measurement output.
+- [`crates/woven-core`](crates/woven-core): transport-neutral sessions, spaces, ownership, authority, state, queues, and worker harness.
+- [`crates/woven-protocol`](crates/woven-protocol): FlatBuffers schema, generated Rust bindings, bounded framing, validation, and fixtures.
+- [`crates/woven-transport`](crates/woven-transport): shared worker handle, entity-lifecycle fan-out, and protocol bridge used by every transport adapter.
+- [`crates/woven-transport-websocket`](crates/woven-transport-websocket): binary WebSocket adapter, the universal baseline transport.
+- [`crates/woven-transport-quic`](crates/woven-transport-quic): native QUIC adapter (Quinn) with reliable streams and unreliable datagrams.
+- [`crates/woven-transport-webtransport`](crates/woven-transport-webtransport): browser WebTransport adapter with reliable streams and unreliable datagrams.
+- [`crates/woven-server`](crates/woven-server): Axum control plane and development server composition.
+- [`crates/woven-inference-core`](crates/woven-inference-core): capability/request/provider data model and the `Provider` trait for the optional inference plane.
+- [`crates/woven-inference-tools`](crates/woven-inference-tools): bounded tool registry and deterministic tool-call gateway; models propose, the gateway decides.
+- [`crates/woven-inference-test-provider`](crates/woven-inference-test-provider): deterministic, scripted provider used in tests and local development.
+- [`crates/woven-inference-coordinator`](crates/woven-inference-coordinator): runs an AI identity as an ordinary core connection and drives providers/tools.
+- [`crates/woven-client-rust`](crates/woven-client-rust): native reference client and integration-test driver.
+- [`crates/woven-client-ts`](crates/woven-client-ts): generated TypeScript FlatBuffers bindings and Node decode-validation scripts.
+- [`crates/woven-client-csharp`](crates/woven-client-csharp): generated C# FlatBuffers bindings and xunit decode-validation tests (Unity-compatible; not a Cargo workspace member).
+- [`crates/woven-client-python`](crates/woven-client-python): generated Python FlatBuffers bindings and pytest decode-validation tests (not a Cargo workspace member).
+- [`crates/woven-loadtest`](crates/woven-loadtest): bounded local routing scenarios and measurement output.
 - [`docs/adr`](docs/adr): accepted architecture records.
 
 ## Development configuration
 
-The development server composition explicitly provisions namespace/session `1`, logical spaces `1` and `2`, reliable and latest-value channels, and the development token `dev-token`. When the inference plane is enabled, it also provisions one demo AI identity with its own dev token, entity, and status channel; see [`crates/signalweave-inference-coordinator`](crates/signalweave-inference-coordinator).
+The development server composition explicitly provisions namespace/session `1`, logical spaces `1` and `2`, reliable and latest-value channels, and the development token `dev-token`. When the inference plane is enabled, it also provisions one demo AI identity with its own dev token, entity, and status channel; see [`crates/woven-inference-coordinator`](crates/woven-inference-coordinator).
 
-[`.env.example`](.env.example) documents the non-secret `SIGNALWEAVE_*` configuration contract for deployment-oriented runtime configuration, including `SIGNALWEAVE_INFERENCE_ENABLED` (the inference plane is off by default). Development authentication must be selected explicitly; authentication is never silently disabled. TLS termination and production certificate configuration are deferred with deployment infrastructure.
+[`.env.example`](.env.example) documents the non-secret `woven_*` configuration contract for deployment-oriented runtime configuration, including `woven_INFERENCE_ENABLED` (the inference plane is off by default). Development authentication must be selected explicitly; authentication is never silently disabled. TLS termination and production certificate configuration are deferred with deployment infrastructure.
 
 ## Security baseline
 
