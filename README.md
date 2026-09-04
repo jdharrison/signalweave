@@ -61,15 +61,13 @@ The two `write_*_fixture` commands regenerate the checked-in protocol golden fix
 - [`crates/woven-core`](crates/woven-core): transport-neutral sessions, spaces, ownership, authority, state, queues, and worker harness.
 - [`crates/woven-protocol`](crates/woven-protocol): FlatBuffers schema, generated Rust bindings, bounded framing, validation, and fixtures.
 - [`crates/woven-transport`](crates/woven-transport): shared worker handle, entity-lifecycle fan-out, and protocol bridge used by every transport adapter.
-- [`crates/woven-transport-websocket`](crates/woven-transport-websocket): binary WebSocket adapter, the universal baseline transport.
-- [`crates/woven-transport-quic`](crates/woven-transport-quic): native QUIC adapter (Quinn) with reliable streams and unreliable datagrams.
-- [`crates/woven-transport-webtransport`](crates/woven-transport-webtransport): browser WebTransport adapter with reliable streams and unreliable datagrams.
+- [`crates/woven-transport-quic`](crates/woven-transport-quic): QUIC (Quinn) native and browser WebTransport adapter with reliable streams and unreliable datagrams.
 - [`crates/woven-server`](crates/woven-server): Axum control plane and development server composition.
 - [`crates/woven-inference-core`](crates/woven-inference-core): capability/request/provider data model and the `Provider` trait for the optional inference plane.
 - [`crates/woven-inference-tools`](crates/woven-inference-tools): bounded tool registry and deterministic tool-call gateway; models propose, the gateway decides.
 - [`crates/woven-inference-test-provider`](crates/woven-inference-test-provider): deterministic, scripted provider used in tests and local development.
 - [`crates/woven-inference-coordinator`](crates/woven-inference-coordinator): runs an AI identity as an ordinary core connection and drives providers/tools.
-- [`crates/woven-client-rust`](crates/woven-client-rust): native reference client and integration-test driver.
+- [`crates/woven-client-rust`](crates/woven-client-rust): native reference client (QUIC/WebTransport) and integration-test driver.
 - [`crates/woven-client-ts`](crates/woven-client-ts): generated TypeScript FlatBuffers bindings and Node decode-validation scripts.
 - [`crates/woven-client-csharp`](crates/woven-client-csharp): generated C# FlatBuffers bindings and xunit decode-validation tests (Unity-compatible; not a Cargo workspace member).
 - [`crates/woven-client-python`](crates/woven-client-python): generated Python FlatBuffers bindings and pytest decode-validation tests (not a Cargo workspace member).
@@ -80,7 +78,7 @@ The two `write_*_fixture` commands regenerate the checked-in protocol golden fix
 
 The development server composition explicitly provisions namespace/session `1`, logical spaces `1` and `2`, reliable and latest-value channels, and the development token `dev-token`. When the inference plane is enabled, it also provisions one demo AI identity with its own dev token, entity, and status channel; see [`crates/woven-inference-coordinator`](crates/woven-inference-coordinator).
 
-[`.env.example`](.env.example) documents the non-secret `woven_*` configuration contract for deployment-oriented runtime configuration, including `woven_INFERENCE_ENABLED` (the inference plane is off by default). Development authentication must be selected explicitly; authentication is never silently disabled. TLS termination and production certificate configuration are deferred with deployment infrastructure.
+[`.env.example`](.env.example) documents the non-secret `WOVEN_*` configuration contract for deployment-oriented runtime configuration, including `WOVEN_INFERENCE_ENABLED` (the inference plane is off by default). Development authentication must be selected explicitly; authentication is never silently disabled. TLS termination and production certificate configuration are deferred with deployment infrastructure.
 
 ## Security baseline
 

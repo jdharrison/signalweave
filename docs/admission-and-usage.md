@@ -6,8 +6,8 @@ machine, and how a Weaver client is expected to interact with these features.
 
 ## Scope
 
-Everything in this document is implemented in `signalweave-core` and exposed through a thin
-development HTTP adapter in `signalweave-server`. The following are intentionally **not**
+Everything in this document is implemented in `woven-core` and exposed through a thin
+development HTTP adapter in `woven-server`. The following are intentionally **not**
 implemented in this milestone:
 
 - Firebase/Firestore integration

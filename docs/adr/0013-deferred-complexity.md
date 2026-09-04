@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Signalweave has broad eventual requirements, but its initial load, topology, and inference usage are unknown. Premature distributed infrastructure or low-level optimization would increase risk without measured benefit.
+Woven has broad eventual requirements, but its initial load, topology, and inference usage are unknown. Premature distributed infrastructure or low-level optimization would increase risk without measured benefit.
 
 ## Decision
 

@@ -1,0 +1,23 @@
+[package]
+name = "woven-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Transport-neutral FlatBuffers protocol and bounded framing for Woven"
+license.workspace = true
+repository.workspace = true
+publish = false
+build = "build.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+flatbuffers.workspace = true
+
+[build-dependencies]
+flatbuffers-build.workspace = true
+flatc-fork.workspace = true
+
+[lints]
+workspace = true

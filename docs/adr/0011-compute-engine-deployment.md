@@ -10,7 +10,7 @@ The relay owns long-lived sessions and needs both TCP and UDP for WebSocket, QUI
 
 ## Decision
 
-The first serious Google Cloud topology will be one small, non-GPU Compute Engine instance in one region, or a small managed instance group when lifecycle management is needed, behind a regional external passthrough Network Load Balancer supporting TCP and UDP. The Signalweave Node terminates TLS/QUIC. Deployment remains containerized and configuration-driven. Infrastructure will be represented in Terraform or OpenTofu, but no resources are provisioned without approval.
+The first serious Google Cloud topology will be one small, non-GPU Compute Engine instance in one region, or a small managed instance group when lifecycle management is needed, behind a regional external passthrough Network Load Balancer supporting TCP and UDP. The Woven Node terminates TLS/QUIC. Deployment remains containerized and configuration-driven. Infrastructure will be represented in Terraform or OpenTofu, but no resources are provisioned without approval.
 
 ## Consequences
 

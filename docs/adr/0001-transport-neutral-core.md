@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Signalweave must expose the same session, routing, ownership, sequencing, and backpressure semantics to browser, Unity, and native clients over transports with different capabilities. Coupling those rules to sockets or a transport library would duplicate behavior and make conformance difficult.
+Woven must expose the same session, routing, ownership, sequencing, and backpressure semantics to browser, Unity, and native clients over transports with different capabilities. Coupling those rules to sockets or a transport library would duplicate behavior and make conformance difficult.
 
 ## Decision
 

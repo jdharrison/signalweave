@@ -1,0 +1,22 @@
+[package]
+name = "woven-loadtest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Bounded local load runner for Woven routing scenarios"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "woven-loadtest"
+path = "src/main.rs"
+
+[dependencies]
+woven-core.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,20 @@
+[package]
+name = "woven-transport"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Transport-independent Woven worker and protocol bridge"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+woven-core.workspace = true
+woven-protocol.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

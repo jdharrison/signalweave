@@ -1254,136 +1254,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "signalweave-client-rust"
-version = "0.1.0"
-dependencies = [
- "quinn",
- "rustls",
- "signalweave-protocol",
- "tokio",
- "tracing",
- "url",
- "wtransport",
-]
-
-[[package]]
-name = "signalweave-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "signalweave-inference-coordinator"
-version = "0.1.0"
-dependencies = [
- "signalweave-core",
- "signalweave-inference-core",
- "signalweave-inference-tools",
- "signalweave-protocol",
- "signalweave-transport",
- "tokio",
-]
-
-[[package]]
-name = "signalweave-inference-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "signalweave-core",
-]
-
-[[package]]
-name = "signalweave-inference-test-provider"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "signalweave-core",
- "signalweave-inference-core",
- "tokio",
-]
-
-[[package]]
-name = "signalweave-inference-tools"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "signalweave-core",
- "signalweave-inference-core",
- "signalweave-transport",
- "tokio",
-]
-
-[[package]]
-name = "signalweave-loadtest"
-version = "0.1.0"
-dependencies = [
- "signalweave-core",
-]
-
-[[package]]
-name = "signalweave-protocol"
-version = "0.1.0"
-dependencies = [
- "flatbuffers",
- "flatbuffers-build",
- "flatc-fork",
-]
-
-[[package]]
-name = "signalweave-server"
-version = "0.1.0"
-dependencies = [
- "axum",
- "quinn",
- "rcgen 0.13.2",
- "serde",
- "serde_json",
- "signalweave-client-rust",
- "signalweave-core",
- "signalweave-inference-coordinator",
- "signalweave-inference-core",
- "signalweave-inference-test-provider",
- "signalweave-inference-tools",
- "signalweave-protocol",
- "signalweave-transport",
- "signalweave-transport-quic",
- "tokio",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "wtransport",
-]
-
-[[package]]
-name = "signalweave-transport"
-version = "0.1.0"
-dependencies = [
- "signalweave-core",
- "signalweave-protocol",
- "tokio",
-]
-
-[[package]]
-name = "signalweave-transport-quic"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "quinn",
- "rcgen 0.13.2",
- "rustls",
- "signalweave-core",
- "signalweave-protocol",
- "signalweave-transport",
- "tokio",
- "tracing",
- "wtransport",
-]
-
-[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1886,6 +1756,136 @@ name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
+
+[[package]]
+name = "woven-client-rust"
+version = "0.1.0"
+dependencies = [
+ "quinn",
+ "rustls",
+ "tokio",
+ "tracing",
+ "url",
+ "woven-protocol",
+ "wtransport",
+]
+
+[[package]]
+name = "woven-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "woven-inference-coordinator"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "woven-core",
+ "woven-inference-core",
+ "woven-inference-tools",
+ "woven-protocol",
+ "woven-transport",
+]
+
+[[package]]
+name = "woven-inference-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "woven-core",
+]
+
+[[package]]
+name = "woven-inference-test-provider"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "tokio",
+ "woven-core",
+ "woven-inference-core",
+]
+
+[[package]]
+name = "woven-inference-tools"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "tokio",
+ "woven-core",
+ "woven-inference-core",
+ "woven-transport",
+]
+
+[[package]]
+name = "woven-loadtest"
+version = "0.1.0"
+dependencies = [
+ "woven-core",
+]
+
+[[package]]
+name = "woven-protocol"
+version = "0.1.0"
+dependencies = [
+ "flatbuffers",
+ "flatbuffers-build",
+ "flatc-fork",
+]
+
+[[package]]
+name = "woven-server"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "quinn",
+ "rcgen 0.13.2",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "woven-client-rust",
+ "woven-core",
+ "woven-inference-coordinator",
+ "woven-inference-core",
+ "woven-inference-test-provider",
+ "woven-inference-tools",
+ "woven-protocol",
+ "woven-transport",
+ "woven-transport-quic",
+ "wtransport",
+]
+
+[[package]]
+name = "woven-transport"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "woven-core",
+ "woven-protocol",
+]
+
+[[package]]
+name = "woven-transport-quic"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "quinn",
+ "rcgen 0.13.2",
+ "rustls",
+ "tokio",
+ "tracing",
+ "woven-core",
+ "woven-protocol",
+ "woven-transport",
+ "wtransport",
+]
 
 [[package]]
 name = "writeable"

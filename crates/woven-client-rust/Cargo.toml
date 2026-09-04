@@ -1,0 +1,24 @@
+[package]
+name = "woven-client-rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Reference Woven client used as the integration-test driver (QUIC/WebTransport)"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+woven-protocol.workspace = true
+quinn.workspace = true
+rustls.workspace = true
+wtransport.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url = "2"
+
+[lints]
+workspace = true

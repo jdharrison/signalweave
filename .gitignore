@@ -42,4 +42,4 @@ __pycache__/
 # OS and editor files
 .DS_Store
 *.swp
-!crates/signalweave-protocol/tests/fixtures/*.swp
+!crates/woven-protocol/tests/fixtures/*.swp

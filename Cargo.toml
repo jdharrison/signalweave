@@ -1,16 +1,16 @@
 [workspace]
 members = [
-    "crates/signalweave-core",
-    "crates/signalweave-protocol",
-    "crates/signalweave-server",
-    "crates/signalweave-transport",
-    "crates/signalweave-transport-quic",
-    "crates/signalweave-client-rust",
-    "crates/signalweave-loadtest",
-    "crates/signalweave-inference-core",
-    "crates/signalweave-inference-tools",
-    "crates/signalweave-inference-test-provider",
-    "crates/signalweave-inference-coordinator",
+    "crates/woven-core",
+    "crates/woven-protocol",
+    "crates/woven-server",
+    "crates/woven-transport",
+    "crates/woven-transport-quic",
+    "crates/woven-client-rust",
+    "crates/woven-loadtest",
+    "crates/woven-inference-core",
+    "crates/woven-inference-tools",
+    "crates/woven-inference-test-provider",
+    "crates/woven-inference-coordinator",
 ]
 resolver = "3"
 
@@ -29,14 +29,14 @@ flatbuffers = "=25.12.19"
 flatbuffers-build = "=0.2.4"
 flatc-fork = "=0.6.0"
 # Internal crates
-signalweave-core = { path = "crates/signalweave-core" }
-signalweave-protocol = { path = "crates/signalweave-protocol" }
-signalweave-transport = { path = "crates/signalweave-transport" }
-signalweave-transport-quic = { path = "crates/signalweave-transport-quic" }
-signalweave-inference-core = { path = "crates/signalweave-inference-core" }
-signalweave-inference-tools = { path = "crates/signalweave-inference-tools" }
-signalweave-inference-test-provider = { path = "crates/signalweave-inference-test-provider" }
-signalweave-inference-coordinator = { path = "crates/signalweave-inference-coordinator" }
+woven-core = { path = "crates/woven-core" }
+woven-protocol = { path = "crates/woven-protocol" }
+woven-transport = { path = "crates/woven-transport" }
+woven-transport-quic = { path = "crates/woven-transport-quic" }
+woven-inference-core = { path = "crates/woven-inference-core" }
+woven-inference-tools = { path = "crates/woven-inference-tools" }
+woven-inference-test-provider = { path = "crates/woven-inference-test-provider" }
+woven-inference-coordinator = { path = "crates/woven-inference-coordinator" }
 # Async runtime
 tokio = { version = "1.53", features = ["full"] }
 async-trait = "0.1"

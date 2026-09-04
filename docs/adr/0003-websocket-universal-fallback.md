@@ -6,7 +6,7 @@ Superseded by [ADR 0014](0014-quic-webtransport-only.md)
 
 ## Context
 
-QUIC and WebTransport are not uniformly available across browsers, enterprise networks, proxies, and Unity/.NET environments. Signalweave needs one broadly deployable path before adding specialized transports.
+QUIC and WebTransport are not uniformly available across browsers, enterprise networks, proxies, and Unity/.NET environments. Woven needs one broadly deployable path before adding specialized transports.
 
 ## Decision
 

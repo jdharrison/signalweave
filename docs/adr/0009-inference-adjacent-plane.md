@@ -10,7 +10,7 @@ AI actors need relay context and must return events, but model latency, provider
 
 ## Decision
 
-Signalweave Intelligence will run adjacent to the relay behind asynchronous, provider-neutral interfaces. Realtime handlers submit bounded requests and return acceptance without waiting for completion. Providers advertise capabilities and operational attributes; the coordinator enforces deadlines, budgets, cancellation, fallback, privacy policy, and scoped context. Results return as correlated lifecycle messages. Inference dependencies will not enter `signalweave-core`, and the entire plane can be disabled.
+Woven Intelligence will run adjacent to the relay behind asynchronous, provider-neutral interfaces. Realtime handlers submit bounded requests and return acceptance without waiting for completion. Providers advertise capabilities and operational attributes; the coordinator enforces deadlines, budgets, cancellation, fallback, privacy policy, and scoped context. Results return as correlated lifecycle messages. Inference dependencies will not enter `woven-core`, and the entire plane can be disabled.
 
 ## Consequences
 

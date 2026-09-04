@@ -1,6 +1,6 @@
-# SIGNALWEAVE — Autonomous Bootstrap and Implementation Prompt
+# WOVEN — Autonomous Bootstrap and Implementation Prompt
 
-You are the lead engineer responsible for initializing and developing **SIGNALWEAVE**, a reusable distributed realtime session, event, state, and inference network written primarily in Rust.
+You are the lead engineer responsible for initializing and developing **WOVEN**, a reusable distributed realtime session, event, state, and inference network written primarily in Rust.
 
 Work autonomously within the local repository. Inspect available source material, make reasonable reversible assumptions, implement in staged vertical slices, run relevant validation, and leave the repository in a working state. Do not stop after producing a plan when useful implementation work can safely proceed.
 
@@ -8,7 +8,7 @@ External cloud mutations, production deployment, new billable resources, IAM cha
 
 ## 1. Mission
 
-Signalweave is one shared infrastructure substrate for many independent projects—not a DARK FOREST-specific game server.
+Woven is one shared infrastructure substrate for many independent projects—not a DARK FOREST-specific game server.
 
 It must support:
 
@@ -29,13 +29,13 @@ The initial system is an ephemeral, sophisticated shared relay. Persistence and 
 
 Use these names consistently:
 
-- Umbrella project: **SIGNALWEAVE**
-- Repository and Rust workspace: `signalweave`
-- Wire protocol: **Signalweave Protocol**
-- Runtime process: **Signalweave Node**
-- Inference subsystem: **Signalweave Intelligence**
+- Umbrella project: **WOVEN**
+- Repository and Rust workspace: `woven`
+- Wire protocol: **Woven Protocol**
+- Runtime process: **Woven Node**
+- Inference subsystem: **Woven Intelligence**
 - Example namespaces: `dark-forest`, `portfolio`
-- Suggested Google Cloud projects: `jdh-signalweave-dev`, `jdh-signalweave-staging`, and `jdh-signalweave-prod`, subject to availability and explicit approval
+- Suggested Google Cloud projects: `jdh-woven-dev`, `jdh-woven-staging`, and `jdh-woven-prod`, subject to availability and explicit approval
 
 Core domain terms:
 
@@ -92,7 +92,7 @@ Its world may contain:
 - crews, organizations, markets, communications, and AI services;
 - long-term player-built history and eventually persistent state.
 
-Use this to validate the general architecture without putting DARK FOREST gameplay rules into Signalweave.
+Use this to validate the general architecture without putting DARK FOREST gameplay rules into Woven.
 
 A representative hierarchy is:
 
@@ -140,21 +140,21 @@ Do not invent concurrency promises from the concept. Client counts, active space
 
 Initialize a Rust workspace with focused crates. Adjust exact boundaries only when there is a concrete reason and record the decision.
 
-- `signalweave-core`: sessions, spaces, entities, subscriptions, ownership, routing, delivery classes, sequencing, and backpressure policy.
-- `signalweave-protocol`: FlatBuffers schemas, generated Rust bindings, framing, compatibility, and conformance fixtures.
-- `signalweave-server`: configuration, lifecycle, worker composition, HTTP control plane, and enabled transports.
-- `signalweave-transport-websocket`: universal binary WebSocket adapter.
-- `signalweave-transport-quic`: native QUIC adapter using Quinn.
-- `signalweave-transport-webtransport`: browser WebTransport adapter.
-- `signalweave-client-rust`: reference native client.
-- `signalweave-client-ts`: generated protocol and browser reference client.
-- `signalweave-client-csharp`: generated protocol and Unity-compatible reference client.
-- `signalweave-inference-core`: inference capabilities, requests, routing policy, deadlines, budgets, cancellation, and streaming results.
-- `signalweave-inference-coordinator`: context assembly, provider selection, scheduling, and response delivery.
-- `signalweave-inference-tools`: application-function registry and validated execution gateway.
-- `signalweave-inference-memory`: scoped memory interfaces and initial in-memory implementation.
-- `signalweave-inference-test-provider`: deterministic fake inference provider.
-- `signalweave-loadtest`: synthetic clients, scenarios, metrics, and reports.
+- `woven-core`: sessions, spaces, entities, subscriptions, ownership, routing, delivery classes, sequencing, and backpressure policy.
+- `woven-protocol`: FlatBuffers schemas, generated Rust bindings, framing, compatibility, and conformance fixtures.
+- `woven-server`: configuration, lifecycle, worker composition, HTTP control plane, and enabled transports.
+- `woven-transport-websocket`: universal binary WebSocket adapter.
+- `woven-transport-quic`: native QUIC adapter using Quinn.
+- `woven-transport-webtransport`: browser WebTransport adapter.
+- `woven-client-rust`: reference native client.
+- `woven-client-ts`: generated protocol and browser reference client.
+- `woven-client-csharp`: generated protocol and Unity-compatible reference client.
+- `woven-inference-core`: inference capabilities, requests, routing policy, deadlines, budgets, cancellation, and streaming results.
+- `woven-inference-coordinator`: context assembly, provider selection, scheduling, and response delivery.
+- `woven-inference-tools`: application-function registry and validated execution gateway.
+- `woven-inference-memory`: scoped memory interfaces and initial in-memory implementation.
+- `woven-inference-test-provider`: deterministic fake inference provider.
+- `woven-loadtest`: synthetic clients, scenarios, metrics, and reports.
 
 It is acceptable to place several early modules in fewer crates if that speeds the first vertical slice. Do not create empty architectural theater. Preserve boundaries in code first and extract crates when useful.
 
@@ -301,9 +301,9 @@ Persistence writes must not block realtime fan-out. Later implementations may sn
 
 Gameplay-visible communication delay is semantic state, not artificial transport latency. Leave a scheduler seam for delayed radio or simulation messages while control and replication remain responsive.
 
-## 14. Signalweave Intelligence: layered inference network
+## 14. Woven Intelligence: layered inference network
 
-Inference is an optional plane adjacent to the relay. It must never execute inside room-worker hot loops, block replication ticks, or introduce provider SDKs into `signalweave-core`.
+Inference is an optional plane adjacent to the relay. It must never execute inside room-worker hot loops, block replication ticks, or introduce provider SDKs into `woven-core`.
 
 Inference layers:
 
@@ -403,7 +403,7 @@ Do not make Docker mandatory for ordinary Rust development.
 
 Google Cloud is a first-class deployment target, but keep it replaceable behind ordinary containers, configuration, and provider interfaces.
 
-The initial serious realtime deployment should use a small Compute Engine VM or managed instance group capable of receiving both TCP and UDP through an external passthrough Network Load Balancer. The Signalweave Node terminates TLS/QUIC at the backend as required.
+The initial serious realtime deployment should use a small Compute Engine VM or managed instance group capable of receiving both TCP and UDP through an external passthrough Network Load Balancer. The Woven Node terminates TLS/QUIC at the backend as required.
 
 Do not use Cloud Run as the primary stateful realtime relay. It may be used later for suitable stateless HTTP or asynchronous helpers, but its WebSocket request lifetime and best-effort reconnect affinity do not match the desired room-owner lifecycle.
 
@@ -411,7 +411,7 @@ Start with one inexpensive non-GPU node in one region. Do not introduce GKE unti
 
 Preferred Google Cloud components when needed:
 
-- Compute Engine for the initial Signalweave Node;
+- Compute Engine for the initial Woven Node;
 - regional external passthrough Network Load Balancer for TCP/UDP;
 - Artifact Registry for immutable container images;
 - Secret Manager for runtime secrets;
@@ -452,7 +452,7 @@ The agent may create branches, commits, and PR material when the repository and 
 
 ## 18. Cloud autonomy and approval boundaries
 
-The agent has broad freedom to design and prepare whatever Signalweave needs, but human attention must be concentrated at meaningful risk boundaries.
+The agent has broad freedom to design and prepare whatever Woven needs, but human attention must be concentrated at meaningful risk boundaries.
 
 Without new approval, the agent may:
 
@@ -487,7 +487,7 @@ Treat cost as an acceptance criterion.
 - Do not leave a GPU running continuously under the normal budget.
 - Default to metered hosted inference with per-day and per-month application quotas.
 - GPU experiments require explicit approval, automatic shutdown, and a written hosted-versus-self-hosted comparison.
-- Keep the portfolio’s static assets on inexpensive static/CDN hosting; use Signalweave only for dynamic presence, events, inference, or interactive services.
+- Keep the portfolio’s static assets on inexpensive static/CDN hosting; use Woven only for dynamic presence, events, inference, or interactive services.
 - Configure billing budgets and alerts, but do not treat alerts as hard caps.
 - Add application-level inference quotas, provider concurrency limits, maximum instance sizes/counts, and automation capable of shutting down approved experimental resources.
 - Produce estimated monthly idle, expected, and stress costs before provisioning.

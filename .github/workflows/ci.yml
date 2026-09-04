@@ -53,16 +53,16 @@ jobs:
         with:
           node-version: "22"
       - name: Install npm dependencies
-        working-directory: crates/signalweave-client-ts
+        working-directory: crates/woven-client-ts
         run: npm ci
       - name: Type-check
-        working-directory: crates/signalweave-client-ts
+        working-directory: crates/woven-client-ts
         run: npm run check
       - name: Unit tests (codec + mocked WebTransport client)
-        working-directory: crates/signalweave-client-ts
+        working-directory: crates/woven-client-ts
         run: npm test
       - name: Decode checked-in golden fixtures
-        working-directory: crates/signalweave-client-ts
+        working-directory: crates/woven-client-ts
         run: |
           npm run test:decode-fixture
           npm run test:decode-tool-call-completed

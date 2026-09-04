@@ -1,0 +1,20 @@
+{
+  "name": "@woven/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "test:decode-fixture": "tsx test/decode-fixture.ts",
+    "test:decode-tool-call-completed": "tsx test/decode-tool-call-completed-fixture.ts"
+  },
+  "dependencies": {
+    "flatbuffers": "25.9.23"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "tsx": "4.19.3",
+    "typescript": "5.8.3"
+  }
+}

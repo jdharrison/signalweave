@@ -1,0 +1,29 @@
+[package]
+name = "woven-transport-quic"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "QUIC/WebTransport adapter for Woven"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+woven-core.workspace = true
+woven-protocol.workspace = true
+woven-transport.workspace = true
+bytes = "1"
+quinn.workspace = true
+rustls.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+wtransport.workspace = true
+
+[dev-dependencies]
+rcgen.workspace = true
+
+[lints]
+workspace = true

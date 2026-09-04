@@ -1,0 +1,23 @@
+[package]
+name = "woven-inference-coordinator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Adjacent-plane inference coordinator: AI-identity connections, bounded provider queue, lifecycle fan-out"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+woven-core.workspace = true
+woven-protocol.workspace = true
+woven-transport.workspace = true
+woven-inference-core.workspace = true
+woven-inference-tools.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

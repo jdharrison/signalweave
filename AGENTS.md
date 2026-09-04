@@ -1,4 +1,4 @@
-# SIGNALWEAVE — Agent Reference
+# WOVEN — Agent Reference
 
 Read this file first and stop. Do not re-read `docs/bootstrap.md`, ADRs, or source files
 unless you need to extend a specific area. Everything an agent needs to orient and act is here.
@@ -10,10 +10,10 @@ Source sections below provide exact public APIs so you can write code against th
 
 | Term | Meaning |
 |---|---|
-| SIGNALWEAVE | Umbrella project |
-| Signalweave Node | Runtime process |
-| Signalweave Protocol | Wire protocol (file identifier `SWP1`) |
-| Signalweave Intelligence | Inference subsystem; optional, adjacent, disabled by default |
+| WOVEN | Umbrella project |
+| Woven Node | Runtime process |
+| Woven Protocol | Wire protocol (file identifier `WVN1`) |
+| Woven Intelligence | Inference subsystem; optional, adjacent, disabled by default |
 | `Namespace` | Project/tenant isolation (e.g. `dark-forest`, `portfolio`) |
 | `Session` | Shared realm inside a namespace |
 | `Space` | Spatial or logical scope within a session, owns a coordinate frame and routing policy |
@@ -29,32 +29,32 @@ IDs: all are `u64` newtypes. **0 is reserved for absent/unassigned on the wire a
 ## Repository layout
 
 ```
-signalweave/
+woven/
 ├── AGENTS.md                        ← you are here
 ├── Cargo.toml                       ← workspace root, shared deps/lints
 ├── Cargo.lock                       ← committed, use --locked in CI
 ├── rust-toolchain.toml              ← pinned to 1.98.0 stable
 ├── rustfmt.toml                     ← edition 2024, max_width 100
 ├── .cargo/config.toml               ← aliases: check-all lint test-all
-├── .env.example                     ← SIGNALWEAVE_* env vars, no secrets
+├── .env.example                     ← WOVEN_* env vars, no secrets
 ├── .github/workflows/ci.yml         ← format, lint, test, doc, audit
 ├── docs/
 │   ├── bootstrap.md                 ← original project prompt (historical reference)
 │   ├── status.md                    ← what's implemented; update when that changes
 │   └── adr/0001–0013-*.md          ← architecture decisions (read only when topic-relevant)
 └── crates/
-    ├── signalweave-core                    ← transport-neutral sessions, spaces, ownership, queues
-    ├── signalweave-protocol                ← FlatBuffers schema, codec, semantic validation, fixtures
-    ├── signalweave-transport               ← shared worker handle, lifecycle fan-out, protocol bridge
-    ├── signalweave-transport-quic          ← QUIC (Quinn) native + WebTransport browser adapter
-    ├── signalweave-server                  ← Axum control plane, development server composition
-    ├── signalweave-inference-core          ← capability/request/provider data model, Provider trait
-    ├── signalweave-inference-tools         ← bounded tool registry, deterministic tool-call gateway
-    ├── signalweave-inference-test-provider ← deterministic scripted provider for tests/dev
-    ├── signalweave-inference-coordinator   ← runs an AI identity as an ordinary core connection
-    ├── signalweave-client-rust             ← native reference client, integration-test driver
-    ├── signalweave-client-ts               ← generated TS bindings + real WebTransport browser client (codec, encode, mock-tested)
-    └── signalweave-loadtest                ← bounded local routing scenarios and measurement
+    ├── woven-core                    ← transport-neutral sessions, spaces, ownership, queues
+    ├── woven-protocol                ← FlatBuffers schema, codec, semantic validation, fixtures
+    ├── woven-transport               ← shared worker handle, lifecycle fan-out, protocol bridge
+    ├── woven-transport-quic          ← QUIC (Quinn) native + WebTransport browser adapter
+    ├── woven-server                  ← Axum control plane, development server composition
+    ├── woven-inference-core          ← capability/request/provider data model, Provider trait
+    ├── woven-inference-tools         ← bounded tool registry, deterministic tool-call gateway
+    ├── woven-inference-test-provider ← deterministic scripted provider for tests/dev
+    ├── woven-inference-coordinator   ← runs an AI identity as an ordinary core connection
+    ├── woven-client-rust             ← native reference client, integration-test driver
+    ├── woven-client-ts               ← generated TS bindings + real WebTransport browser client (codec, encode, mock-tested)
+    └── woven-loadtest                ← bounded local routing scenarios and measurement
 ```
 
 Do not create empty placeholder crates or modules — every crate above contains working behavior.
@@ -69,7 +69,7 @@ optional adjacent inference plane. See [`docs/status.md`](docs/status.md) for wh
 implemented in each area and [`docs/adr`](docs/adr) for why.
 
 Cloud deployment, orchestration, and any hosted console/control-panel UI are out of scope
-for this repository by design — Signalweave stays agnostic and self-hostable on its own,
+for this repository by design — Woven stays agnostic and self-hostable on its own,
 the way Redis or Postgres are. Domain-specific consumer examples (games, sites, etc.) are
 likewise left to consuming projects.
 
@@ -89,27 +89,27 @@ Aliases defined in `.cargo/config.toml`: `cargo check-all`, `cargo lint`, `cargo
 
 Regenerate the protocol golden fixtures after any schema change:
 ```sh
-cargo run -p signalweave-protocol --example write_golden
-cargo run -p signalweave-protocol --example write_tool_call_completed_fixture
+cargo run -p woven-protocol --example write_golden
+cargo run -p woven-protocol --example write_tool_call_completed_fixture
 ```
 
 ---
 
 ## Hard rules (never violate)
 
-- No handwritten `unsafe` code. `signalweave-core` has `#![forbid(unsafe_code)]`. The protocol crate uses `#![deny(unsafe_code)]` with a narrowly scoped `#[allow]` only inside the private `generated` module (FlatBuffers runtime).
+- No handwritten `unsafe` code. `woven-core` has `#![forbid(unsafe_code)]`. The protocol crate uses `#![deny(unsafe_code)]` with a narrowly scoped `#[allow]` only inside the private `generated` module (FlatBuffers runtime).
 - No unbounded channels, collections, or queues anywhere.
 - No global locks. Hot state has a single owner.
-- No game rules, physics, or domain logic in `signalweave-core` or `signalweave-protocol`.
+- No game rules, physics, or domain logic in `woven-core` or `woven-protocol`.
 - No cloud mutations, IAM changes, secret operations, DNS changes, or production deployments without explicit user approval. Local code, tests, containers, infra plans, and read-only inspection are always safe.
 - No empty placeholder crates or modules. Add a crate only when it contains working behavior.
 - No `ensure_session` / implicit session creation. Sessions are provisioned by the server via `core.provision_session()`.
 - No comments that restate the code. Comments explain non-obvious intent only.
-- Inference stays adjacent: no inference dependency enters `signalweave-core` or `signalweave-protocol` internals beyond the additive wire message kinds already there. Disabling the plane must never change relay behavior.
+- Inference stays adjacent: no inference dependency enters `woven-core` or `woven-protocol` internals beyond the additive wire message kinds already there. Disabling the plane must never change relay behavior.
 
 ---
 
-## `signalweave-core` public API
+## `woven-core` public API
 
 ### IDs (`crate::ids`)
 
@@ -194,7 +194,7 @@ QueuePush: Queued | QueuedCriticalAfterEviction(QueueEviction) | ReplacedLatest 
 
 ```rust
 // Construction
-let core = SignalweaveCore::new(authenticator, CoreConfig::default())?;
+let core = WovenCore::new(authenticator, CoreConfig::default())?;
 
 // CoreConfig defaults (all adjustable):
 //   max_connections: 4_096        max_sessions: 1_024
@@ -274,7 +274,7 @@ harness.run_pending() → Vec<Result<CommandResult, CoreError>>
 
 ---
 
-## `signalweave-transport` public API
+## `woven-transport` public API
 
 Shared by every transport adapter (QUIC, WebTransport) and by the inference
 coordinator, which uses it exactly like a transport does.
@@ -305,18 +305,18 @@ send_envelope(&write_sender, envelope) → Result<(), ()>
 send_error(&write_sender, related_kind, code, message)
 
 // A control envelope this crate doesn't itself route, handed to an optional adjacent
-// plane instead of rejected. signalweave-transport has no knowledge of what consumes it.
+// plane instead of rejected. woven-transport has no knowledge of what consumes it.
 struct UnroutedControl { connection: ConnectionId, envelope: Envelope }
 ```
 
 ---
 
-## `signalweave-protocol` public API
+## `woven-protocol` public API
 
 ```rust
 // Constants
 PROTOCOL_VERSION: u16 = 1
-FILE_IDENTIFIER: &str  = "SWP1"
+FILE_IDENTIFIER: &str  = "WVN1"
 
 // Codec — size-prefixed FlatBuffers framing
 let codec = Codec::default();                                      // default limits: 1MB frame, 256KB payload
@@ -400,23 +400,23 @@ ToolCallCompleted(..)           (32)  — space+entity-scoped, delivery=Reliable
 // UnknownMessageKind | UnknownDeliveryClass | UnsupportedEnumValue | MessageControlMismatch
 // MissingPayloadType | UnexpectedDomainPayload | InvalidSemantics{message_kind, reason}
 
-// Schema: crates/signalweave-protocol/schemas/signalweave_v1.fbs
-// Golden fixtures: crates/signalweave-protocol/tests/fixtures/{reliable_event_v1,tool_call_completed_v1}.swp
-// Companions: crates/signalweave-protocol/tests/fixtures/*.expected.txt
+// Schema: crates/woven-protocol/schemas/woven_v1.fbs
+// Golden fixtures: crates/woven-protocol/tests/fixtures/{reliable_event_v1,tool_call_completed_v1}.swp
+// Companions: crates/woven-protocol/tests/fixtures/*.expected.txt
 // FlatBuffers generation: vendored via flatc-fork=0.6.0 + flatbuffers-build=0.2.4 (no system flatc needed)
 ```
 
 ---
 
-## `signalweave-inference-*` public API
+## `woven-inference-*` public API
 
 Optional, adjacent plane (ADR 0009). Disabled by default (`ServerConfig::inference_enabled = false`).
-Adds no dependency to `signalweave-core` or `signalweave-protocol` beyond the wire message
+Adds no dependency to `woven-core` or `woven-protocol` beyond the wire message
 kinds above. An AI identity is an ordinary authenticated core connection — no special
 authorization concept exists for it.
 
 ```rust
-// signalweave-inference-core: capability/request/provider data model
+// woven-inference-core: capability/request/provider data model
 struct Capability(String);                          // e.g. "language.dialogue"
 struct ProviderDescriptor { capability, locality, privacy, modalities, supports_streaming,
                              max_context_items, max_concurrency, latency_class, cost_class, quality_tier }
@@ -435,7 +435,7 @@ trait Provider: Send + Sync {
     async fn run(&self, request: InferenceRequest) -> InferenceOutcome;
 }
 
-// signalweave-inference-tools: bounded registry + deterministic gateway (ADR 0010)
+// woven-inference-tools: bounded registry + deterministic gateway (ADR 0010)
 struct ToolDefinition { id, version, side_effect: SideEffect }  // SideEffect: ReadOnly | StateChanging
 struct ToolInvocationContext { worker: WorkerHandle, connection, entity, space, space_epoch }
 enum ToolCallOutcome { Completed{new_revision, result} | Rejected{code: ToolCallRejectionReason, reason} }
@@ -453,11 +453,11 @@ registry.evaluate(&context, &proposal).await → ToolCallOutcome
 // proposal.expected_revision against its own counter) before calling core.publish() —
 // there is no core-level revision primitive; see demo::StatusUpdateTool for the pattern.
 
-// signalweave-inference-test-provider: deterministic scripted Provider, no network/randomness
+// woven-inference-test-provider: deterministic scripted Provider, no network/randomness
 DeterministicProvider;                                // implements Provider
-// demo::{DiagnosticTool, StatusUpdateTool} in signalweave-inference-tools pair with its scripts
+// demo::{DiagnosticTool, StatusUpdateTool} in woven-inference-tools pair with its scripts
 
-// signalweave-inference-coordinator: runs one AI identity, drives providers/tools
+// woven-inference-coordinator: runs one AI identity, drives providers/tools
 struct AiIdentityConfig { token, namespace, session, space, space_epoch, status_channel }
 struct CoordinatorConfig { worker, identity, provider: Arc<dyn Provider>, tools: Arc<ToolRegistry>, queue_capacity }
 spawn(config, inbound: mpsc::Receiver<UnroutedControl>) → Result<(ConnectionId, EntityId), CoordinatorError>

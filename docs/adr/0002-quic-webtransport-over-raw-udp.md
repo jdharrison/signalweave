@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Realtime state benefits from unreliable datagrams, while control messages, events, and snapshots require reliability. A raw UDP protocol would require Signalweave to recreate encryption, congestion control, reliability, fragmentation policy, NAT handling, and connection migration.
+Realtime state benefits from unreliable datagrams, while control messages, events, and snapshots require reliability. A raw UDP protocol would require Woven to recreate encryption, congestion control, reliability, fragmentation policy, NAT handling, and connection migration.
 
 ## Decision
 

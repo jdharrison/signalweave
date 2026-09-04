@@ -1,6 +1,6 @@
-# Signalweave Status
+# Woven Status
 
-Signalweave is feature-complete for its own scope: a transport-neutral realtime core, a
+Woven is feature-complete for its own scope: a transport-neutral realtime core, a
 versioned FlatBuffers wire protocol, two interchangeable realtime transports, spatial
 interest routing with a load runner, and an optional adjacent inference plane. It is
 designed to be self-hosted standalone, the way you'd self-host Redis or Postgres, with no
@@ -8,7 +8,7 @@ dependency on any hosted control plane or console.
 
 ## What's implemented
 
-**Core** (`signalweave-core`) — validated typed IDs, explicit namespace/session/space/channel
+**Core** (`woven-core`) — validated typed IDs, explicit namespace/session/space/channel
 grants, server-provisioned bounded sessions, nested anchored spaces with epoch tombstones,
 entities and ownership, subscriptions, server-controlled delivery/persistence policy,
 monotonic sequencing, bounded in-memory state, rate and payload limits, priority-aware
@@ -17,15 +17,15 @@ journal outbox with a no-op sink, a deterministic worker harness, and per-sessio
 admission control: capacity allocation, FIFO queueing with offers, reconnect grace,
 usage counters, and configurable windowed aggregation with in-memory/JSONL/spooling sinks.
 
-**Protocol** (`signalweave-protocol`) — the full v1 metadata envelope and typed control
+**Protocol** (`woven-protocol`) — the full v1 metadata envelope and typed control
 messages, including inference/tool-call lifecycle messages, a pinned vendored FlatBuffers
 compiler, verifier-backed bounded decoding, semantic validation, and checked-in golden
 fixtures proving byte-for-byte cross-language stability.
 
-**Realtime transports** — an Axum control plane (`signalweave-server`) exposing
+**Realtime transports** — an Axum control plane (`woven-server`) exposing
 `/healthz`, `/readyz`, `/metrics`, and `/v1/capabilities`; a bounded single-owner Tokio
-worker and protocol bridge shared by every adapter (`signalweave-transport`); native QUIC
-and (in the same `signalweave-transport-quic` crate) browser WebTransport, both mapping
+worker and protocol bridge shared by every adapter (`woven-transport`); native QUIC
+and (in the same `woven-transport-quic` crate) browser WebTransport, both mapping
 unreliable/best-effort delivery to datagrams under a conservative packet budget. Binary
 WebSocket was removed as a transport (ADR 0014): native clients speak QUIC, browsers speak
 WebTransport, sharing the same envelope codec and delivery-class mapping. Real-socket
@@ -36,27 +36,27 @@ client; a browser maps it to WebTransport via the deterministic port convention
 also exposes admission and queue endpoints (`/v1/virtual-servers/{server_id}/join`,
 `/v1/queues/{ticket}`, etc.) and an operational snapshot route.
 
-**Interest management** (`signalweave-core` + `signalweave-loadtest`) — bounded 2D/3D
+**Interest management** (`woven-core` + `woven-loadtest`) — bounded 2D/3D
 spatial grid routing for replaceable state, with owner-updated positions, cell indexes,
 radius filtering, optional exact distance checks, and reliable-event bypass; a bounded
 local load runner for broadcast, topic, 2D-grid, and 3D-grid scenarios reporting measured
 publish latency percentiles, delivery counts, queue effects, and machine metadata.
 
-**Inference plane** (`signalweave-inference-*`) — an optional, adjacent plane, disabled by
+**Inference plane** (`woven-inference-*`) — an optional, adjacent plane, disabled by
 default, adding no dependency to the core or protocol crates beyond twelve additive wire
-message kinds. A coordinator (`signalweave-inference-coordinator`) runs each AI identity as
+message kinds. A coordinator (`woven-inference-coordinator`) runs each AI identity as
 an ordinary authenticated core connection, holding a bounded per-request provider queue. A
 provider-neutral capability/request model and `Provider` trait live in
-`signalweave-inference-core`. A deterministic tool-call gateway
-(`signalweave-inference-tools`) lets model output propose state changes without ever
+`woven-inference-core`. A deterministic tool-call gateway
+(`woven-inference-tools`) lets model output propose state changes without ever
 mutating state directly — the model proposes, the gateway decides. A deterministic scripted
-provider (`signalweave-inference-test-provider`) exercises the full path — an AI
+provider (`woven-inference-test-provider`) exercises the full path — an AI
 conversation, a read-only tool call, and rejection of a stale state-changing proposal —
 with no paid service required.
 
-**Reference clients** — a native Rust client (`signalweave-client-rust`) used as the
+**Reference clients** — a native Rust client (`woven-client-rust`) used as the
 integration-test driver, selecting QUIC or WebTransport automatically from the connection
-URL scheme; and a TypeScript WebTransport browser client (`signalweave-client-ts`) that
+URL scheme; and a TypeScript WebTransport browser client (`woven-client-ts`) that
 mirrors the Rust client API over the WHATWG `WebTransport` transport, with encode/decode
 tests and a mock-transport client test. The Rust and TypeScript encoders are proven
 wire-compatible in both directions against the same checked-in golden fixtures, closing the
@@ -73,8 +73,8 @@ See [`docs/adr`](adr) for the architecture decisions behind these choices, and
 
 Cloud deployment, orchestration, and any hosted console/control-panel UI are deliberately
 kept out of this repository so the core stays agnostic and self-hostable on its own.
-Signalweave exposes what an external orchestrator needs — health/readiness endpoints,
+Woven exposes what an external orchestrator needs — health/readiness endpoints,
 `/v1/capabilities`, and bounded, explicit resource configuration — without assuming one
 exists. Domain-specific consumer examples (a game namespace, a portfolio site, etc.) are
 likewise left to consuming projects: no game rules, physics, or domain logic belong in
-`signalweave-core` or `signalweave-protocol`.
+`woven-core` or `woven-protocol`.

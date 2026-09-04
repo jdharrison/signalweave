@@ -20,9 +20,9 @@ backend from the URL and target environment.
 ## Decision
 
 - Remove the WebSocket transport entirely.
-- Merge `signalweave-transport-quic` and `signalweave-transport-webtransport` into a single
-  QUIC/WebTransport crate (`signalweave-transport-quic`).
-- Keep `signalweave-transport` as the shared, network-agnostic worker bridge and envelope
+- Merge `woven-transport-quic` and `woven-transport-webtransport` into a single
+  QUIC/WebTransport crate (`woven-transport-quic`).
+- Keep `woven-transport` as the shared, network-agnostic worker bridge and envelope
   router.
 - Make the reference Rust client transport-agnostic: it connects via QUIC for native targets
   and WebTransport for browser/WASM targets, using the same public `Client` API.
@@ -51,7 +51,7 @@ backend from the URL and target environment.
 
 ## Deferred
 
-- Collapsing `signalweave-transport` into the unified QUIC/WebTransport crate is left as a
+- Collapsing `woven-transport` into the unified QUIC/WebTransport crate is left as a
   future simplification if the shared bridge proves to have no other consumers.
 - Unifying the control plane (`/v1/capabilities`) onto the same HTTP/3 QUIC port as
   WebTransport was evaluated (via `hyperium/`h3`), but deferred: `h3-webtransport` today
