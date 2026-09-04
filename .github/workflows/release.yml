@@ -107,7 +107,7 @@ jobs:
                   print(f"{name}: expected {version}, found {packages.get(name)!r}", file=sys.stderr)
               sys.exit(1)
           PY
-          node --input-type=module -e 'import packageJson from "./crates/woven-client-ts/package.json" with { type: "json" }; if (packageJson.version !== process.env.VERSION) { throw new Error(`@woven/client: expected ${process.env.VERSION}, found ${packageJson.version}`); }'
+          node --input-type=module -e 'import packageJson from "./crates/woven-client-ts/package.json" with { type: "json" }; if (packageJson.version !== process.env.VERSION) { throw new Error(`@signalweave/woven-client: expected ${process.env.VERSION}, found ${packageJson.version}`); }'
       - name: Install TypeScript dependencies
         working-directory: crates/woven-client-ts
         run: npm ci
@@ -186,18 +186,18 @@ jobs:
             esac
           done
 
-          status="$(registry_status "https://registry.npmjs.org/%40woven%2Fclient/$VERSION")" || {
-            echo "Unable to check npm for @woven/client $VERSION." >&2
+          status="$(registry_status "https://registry.npmjs.org/%40signalweave%2Fwoven-client/$VERSION")" || {
+            echo "Unable to check npm for @signalweave/woven-client $VERSION." >&2
             exit 1
           }
           case "$status" in
             200)
-              echo "npm already contains @woven/client $VERSION; releases are immutable." >&2
+              echo "npm already contains @signalweave/woven-client $VERSION; releases are immutable." >&2
               exit 1
               ;;
             404) ;;
             *)
-              echo "npm returned HTTP $status while checking @woven/client $VERSION; refusing to publish." >&2
+              echo "npm returned HTTP $status while checking @signalweave/woven-client $VERSION; refusing to publish." >&2
               exit 1
               ;;
           esac

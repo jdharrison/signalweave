@@ -26,11 +26,11 @@ The encoder is validated for wire compatibility in both directions:
 ## Using the client (browser)
 
 ```sh
-npm install @woven/client
+npm install @signalweave/woven-client
 ```
 
 ```ts
-import { WovenClient } from "@woven/client";
+import { WovenClient } from "@signalweave/woven-client";
 
 const client = await WovenClient.connect({
   url: "quic://host:4433",

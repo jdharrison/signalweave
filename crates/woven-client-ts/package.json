@@ -1,6 +1,6 @@
 {
-  "name": "@woven/client",
-  "version": "0.1.1",
+  "name": "@signalweave/woven-client",
+  "version": "0.1.2",
   "description": "Browser WebTransport client for Woven",
   "repository": {
     "type": "git",

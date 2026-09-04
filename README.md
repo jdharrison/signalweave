@@ -33,10 +33,10 @@ A system `flatc` installation is not required. Cargo builds the pinned FlatBuffe
 ```sh
 cargo install woven-server
 cargo add woven-client
-npm install @woven/client
+npm install @signalweave/woven-client
 ```
 
-`woven-server` is the self-hosted server executable. `woven-client` is the native Rust library, and `@woven/client` is the browser/WebTransport client.
+`woven-server` is the self-hosted server executable. `woven-client` is the native Rust library, and `@signalweave/woven-client` is the browser/WebTransport client.
 
 ## Local development
 
@@ -83,7 +83,7 @@ The two `write_*_fixture` commands regenerate the checked-in protocol golden fix
 - [`crates/woven-inference-test-provider`](crates/woven-inference-test-provider): deterministic, scripted provider used in tests and local development.
 - [`crates/woven-inference-coordinator`](crates/woven-inference-coordinator): runs an AI identity as an ordinary core connection and drives providers/tools.
 - [`crates/woven-client-rust`](crates/woven-client-rust): `woven-client`, the native QUIC/WebTransport client library and integration-test driver.
-- [`crates/woven-client-ts`](crates/woven-client-ts): `@woven/client`, the browser/WebTransport package and generated TypeScript FlatBuffers bindings.
+- [`crates/woven-client-ts`](crates/woven-client-ts): `@signalweave/woven-client`, the browser/WebTransport package and generated TypeScript FlatBuffers bindings.
 - [`crates/woven-loadtest`](crates/woven-loadtest): bounded local routing scenarios and measurement output.
 - [`docs/adr`](docs/adr): accepted architecture records.
 
@@ -91,7 +91,7 @@ The two `write_*_fixture` commands regenerate the checked-in protocol golden fix
 
 Pull requests and pushes to `main` run Rust formatting, Clippy, tests, and workspace builds, plus TypeScript formatting, static checks, tests, and package builds. CI never publishes packages, creates releases, or requires registry credentials.
 
-Pushing a `release/vX.Y.Z` tag starts a release automatically. The workflow derives `X.Y.Z` from the tag, checks it against every published Rust package and `@woven/client`, validates the full workspace, publishes crates.io packages in dependency order, publishes npm with provenance, then creates the GitHub Release with server archives and SHA-256 checksums. Manual dispatch remains available for an existing release tag and requires `confirm=publish`.
+Pushing a `release/vX.Y.Z` tag starts a release automatically. The workflow derives `X.Y.Z` from the tag, checks it against every published Rust package and `@signalweave/woven-client`, validates the full workspace, publishes crates.io packages in dependency order, publishes npm with provenance, then creates the GitHub Release with server archives and SHA-256 checksums. Manual dispatch remains available for an existing release tag and requires `confirm=publish`.
 
 Required GitHub Actions secrets:
 

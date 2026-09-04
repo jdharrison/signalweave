@@ -15,7 +15,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -29,14 +29,14 @@ flatbuffers = "=25.12.19"
 flatbuffers-build = "=0.2.4"
 flatc-fork = "=0.6.0"
 # Internal crates
-woven-core = { path = "crates/woven-core", version = "=0.1.1" }
-woven-protocol = { path = "crates/woven-protocol", version = "=0.1.1" }
-woven-transport = { path = "crates/woven-transport", version = "=0.1.1" }
-woven-transport-quic = { path = "crates/woven-transport-quic", version = "=0.1.1" }
-woven-inference-core = { path = "crates/woven-inference-core", version = "=0.1.1" }
-woven-inference-tools = { path = "crates/woven-inference-tools", version = "=0.1.1" }
-woven-inference-test-provider = { path = "crates/woven-inference-test-provider", version = "=0.1.1" }
-woven-inference-coordinator = { path = "crates/woven-inference-coordinator", version = "=0.1.1" }
+woven-core = { path = "crates/woven-core", version = "=0.1.2" }
+woven-protocol = { path = "crates/woven-protocol", version = "=0.1.2" }
+woven-transport = { path = "crates/woven-transport", version = "=0.1.2" }
+woven-transport-quic = { path = "crates/woven-transport-quic", version = "=0.1.2" }
+woven-inference-core = { path = "crates/woven-inference-core", version = "=0.1.2" }
+woven-inference-tools = { path = "crates/woven-inference-tools", version = "=0.1.2" }
+woven-inference-test-provider = { path = "crates/woven-inference-test-provider", version = "=0.1.2" }
+woven-inference-coordinator = { path = "crates/woven-inference-coordinator", version = "=0.1.2" }
 # Async runtime
 tokio = { version = "1.53", features = ["full"] }
 async-trait = "0.1"

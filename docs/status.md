@@ -56,7 +56,7 @@ with no paid service required.
 
 **Reference clients** — the native Rust library (`woven-client`) used as the
 integration-test driver, selecting QUIC or WebTransport automatically from the connection
-URL scheme; and the TypeScript WebTransport browser package (`@woven/client`) that
+URL scheme; and the TypeScript WebTransport browser package (`@signalweave/woven-client`) that
 mirrors the Rust client API over the WHATWG `WebTransport` transport, with encode/decode
 tests and a mock-transport client test. The Rust and TypeScript encoders are proven
 wire-compatible in both directions against the same checked-in golden fixtures, closing the
