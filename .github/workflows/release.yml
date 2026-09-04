@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag, for example v0.1.1 or v0.1.1-alpha.1
+        description: Existing release tag, for example release/v0.1.1 or release/v0.1.1-alpha.1
         required: true
         type: string
       confirm:
@@ -45,12 +45,12 @@ jobs:
             exit 1
           fi
           TAG="${RELEASE_TAG:-$INPUT_TAG}"
-          if ! printf '%s' "$TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
-            echo "Release tag must be valid SemVer in vX.Y.Z form: $TAG" >&2
+          if ! printf '%s' "$TAG" | grep -Eq '^release/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+            echo "Release tag must use release/vX.Y.Z SemVer form: $TAG" >&2
             exit 1
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#release/v}" >> "$GITHUB_OUTPUT"
 
   validate:
     name: Validate release contents

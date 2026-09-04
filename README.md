@@ -91,7 +91,7 @@ The two `write_*_fixture` commands regenerate the checked-in protocol golden fix
 
 Pull requests and pushes to `main` run Rust formatting, Clippy, tests, and workspace builds, plus TypeScript formatting, static checks, tests, and package builds. CI never publishes packages, creates releases, or requires registry credentials.
 
-Releases run only when a GitHub Release is published for a `vX.Y.Z` tag, or through **Actions → Release → Run workflow** with an existing tag and `confirm=publish`. The workflow checks that the tag version matches every published Rust package and `@woven/client`, validates the full workspace, publishes crates.io packages in dependency order, publishes npm with provenance, then attaches server archives and SHA-256 checksums to the GitHub Release.
+Releases run only when a GitHub Release is published for a `release/vX.Y.Z` tag, or through **Actions → Release → Run workflow** with that existing tag and `confirm=publish`. The workflow derives `X.Y.Z` from the tag, checks it against every published Rust package and `@woven/client`, validates the full workspace, publishes crates.io packages in dependency order, publishes npm with provenance, then attaches server archives and SHA-256 checksums to the GitHub Release.
 
 Required GitHub Actions secrets:
 
@@ -109,7 +109,7 @@ Supported `woven-server` binary platforms:
 
 1. Update package versions consistently.
 2. Confirm changelog/release notes.
-3. Push the matching `vX.Y.Z` tag.
+3. Push the matching `release/vX.Y.Z` tag.
 4. Create or publish the GitHub Release.
 5. Monitor the release workflow.
 6. Verify crates.io, npm, checksums, and downloaded binaries.
