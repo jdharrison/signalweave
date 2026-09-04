@@ -1403,6 +1403,11 @@ dependencies = [
 [[package]]
 name = "signalweave-core"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "signalweave-inference-coordinator"
@@ -1470,6 +1475,7 @@ dependencies = [
  "quinn",
  "rcgen 0.13.2",
  "serde",
+ "serde_json",
  "signalweave-client-rust",
  "signalweave-core",
  "signalweave-inference-coordinator",
@@ -1483,6 +1489,7 @@ dependencies = [
  "signalweave-transport-webtransport",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "tower",
  "tower-http",
  "tracing",
  "tracing-subscriber",

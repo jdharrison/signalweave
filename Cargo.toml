@@ -52,6 +52,7 @@ rcgen = "0.13"
 wtransport = { version = "=0.7.2", features = ["dangerous-configuration"] }
 # HTTP + WebSocket
 axum = { version = "0.8", features = ["ws"] }
+tower = { version = "0.5", default-features = false, features = ["util"] }
 tower-http = { version = "0.7", features = ["trace"] }
 tokio-tungstenite = { version = "0.30", features = ["connect", "handshake"] }
 # Serialization

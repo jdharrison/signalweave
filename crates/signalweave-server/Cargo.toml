@@ -40,6 +40,8 @@ wtransport.workspace = true
 signalweave-client-rust = { path = "../signalweave-client-rust" }
 tokio-tungstenite.workspace = true
 futures-util.workspace = true
+serde_json.workspace = true
+tower.workspace = true
 
 [lints]
 workspace = true

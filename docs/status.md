@@ -13,7 +13,9 @@ grants, server-provisioned bounded sessions, nested anchored spaces with epoch t
 entities and ownership, subscriptions, server-controlled delivery/persistence policy,
 monotonic sequencing, bounded in-memory state, rate and payload limits, priority-aware
 bounded/coalescing queues, stale-queue purging, immediate slow-consumer cleanup, a bounded
-journal outbox with a no-op sink, and a deterministic worker harness.
+journal outbox with a no-op sink, a deterministic worker harness, and per-session
+admission control: capacity allocation, FIFO queueing with offers, reconnect grace,
+usage counters, and configurable windowed aggregation with in-memory/JSONL/spooling sinks.
 
 **Protocol** (`signalweave-protocol`) — the full v1 metadata envelope and typed control
 messages, including inference/tool-call lifecycle messages, a pinned vendored FlatBuffers
@@ -28,6 +30,9 @@ WebSocket (`signalweave-transport-websocket`, the universal baseline); native QU
 (`signalweave-transport-webtransport`), both mapping unreliable/best-effort delivery to
 datagrams under a conservative packet budget. Real-socket conformance coverage exists for
 all three, and clients negotiate/observe available transports through `/v1/capabilities`.
+The development HTTP control plane also exposes admission and queue endpoints
+(`/v1/virtual-servers/{server_id}/join`, `/v1/queues/{ticket}`, etc.) and an operational
+snapshot route.
 
 **Interest management** (`signalweave-core` + `signalweave-loadtest`) — bounded 2D/3D
 spatial grid routing for replaceable state, with owner-updated positions, cell indexes,

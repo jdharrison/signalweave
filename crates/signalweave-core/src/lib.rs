@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod admission;
 mod auth;
 mod authority;
 mod core;
@@ -7,8 +8,15 @@ mod ids;
 mod journal;
 mod model;
 mod queue;
+mod usage;
 mod worker;
 
+pub use admission::{
+    AdmissionController, AdmissionLease, AdmissionMetadata, AdmissionSnapshot, CancelResult,
+    CapacityPoolRef, CapacityUpdate, ClaimError, IdempotencyKey, JoinDecision, JoinRequest,
+    QueuePolicy, QueueStatus, QueueTicket, QueueTicketId, RejectionReason, ReleaseReason,
+    ResumeToken, VirtualServerCapacity,
+};
 pub use auth::{
     AccessGrant, AuthError, AuthenticatedPrincipal, Authenticator, AuthorizationGrants,
     ChannelScope, Credentials, DevAuthenticator, DevAuthenticatorError,
@@ -23,8 +31,8 @@ pub use core::{
     SignalweaveCore,
 };
 pub use ids::{
-    ChannelId, ConnectionId, EntityId, NamespaceId, PrincipalId, SessionId, SessionKey, SpaceEpoch,
-    SpaceId, SpaceKey,
+    ChannelId, ConnectionId, EntityId, NamespaceId, NodeId, PoolId, PrincipalId, ServerId,
+    SessionId, SessionKey, SpaceEpoch, SpaceId, SpaceKey, WorkspaceId,
 };
 pub use journal::{
     JournalError, JournalOutbox, JournalOutboxError, JournalRecord, JournalSink, NoopJournalSink,
@@ -36,5 +44,10 @@ pub use model::{
 };
 pub use queue::{
     OutboundQueue, OutboundQueueConfig, QueueConfigError, QueueError, QueueEviction, QueuePush,
+};
+pub use usage::{
+    ConnectionHandle, DEFAULT_USAGE_WINDOW, JsonlFileSink, MemoryUsageSink, NoopUsageSink,
+    SinkHealth, SpoolingUsageSink, USAGE_SCHEMA_VERSION, UsageAggregator, UsageCounters,
+    UsageMetrics, UsageSink, UsageSinkError, UsageWindow,
 };
 pub use worker::{Command, CommandResult, HarnessError, TransportIndependentWorker, WorkerHarness};

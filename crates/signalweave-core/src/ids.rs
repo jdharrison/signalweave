@@ -2,7 +2,19 @@ use std::fmt;
 
 macro_rules! define_id {
     ($name:ident) => {
-        #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        #[derive(
+            Clone,
+            Copy,
+            Debug,
+            Default,
+            Eq,
+            Hash,
+            Ord,
+            PartialEq,
+            PartialOrd,
+            serde::Serialize,
+            serde::Deserialize,
+        )]
         pub struct $name(u64);
 
         impl $name {
@@ -32,15 +44,21 @@ macro_rules! define_id {
 }
 
 define_id!(NamespaceId);
+define_id!(WorkspaceId);
+define_id!(PoolId);
 define_id!(SessionId);
+define_id!(ServerId);
 define_id!(SpaceId);
 define_id!(EntityId);
 define_id!(ConnectionId);
 define_id!(PrincipalId);
 define_id!(ChannelId);
 define_id!(SpaceEpoch);
+define_id!(NodeId);
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
 pub struct SessionKey {
     pub namespace: NamespaceId,
     pub session: SessionId,
@@ -53,7 +71,9 @@ impl SessionKey {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
 pub struct SpaceKey {
     pub session: SessionKey,
     pub space: SpaceId,

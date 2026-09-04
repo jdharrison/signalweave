@@ -2,6 +2,8 @@
 
 #![deny(unsafe_code)]
 
+pub mod admission;
+
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
@@ -118,12 +120,14 @@ fn router_with_transports(
         webtransport_enabled,
         inference_enabled,
     });
+    let admission_state = admission::development_state();
     Router::new()
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
         .route("/metrics", get(metrics))
         .route("/v1/capabilities", get(capabilities))
         .route("/ws", get(websocket))
+        .merge(admission::routes().with_state(admission_state))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
