@@ -12,7 +12,7 @@ WOVEN is a general-purpose realtime relay, not a product tied to any particular 
 - Explicit entity lifecycle support: server-assigned entities, disconnect cleanup, subscriber `EntityLeft` notifications, and atomic epoch-validated transitions that emit ordered leave/enter events.
 - A versioned, size-prefixed FlatBuffers protocol with verifier-backed bounded decoding, semantic validation, typed control payloads, and checked-in golden fixtures proving byte-for-byte cross-language stability.
 - An Axum HTTP control plane with public `/healthz`, `/readyz`, `/metrics`, and `/v1/capabilities` endpoints.
-- Three interchangeable realtime transports sharing one bounded single-owner Tokio worker and protocol bridge: binary WebSocket (the universal baseline), plus native QUIC and browser WebTransport, which also map unreliable/best-effort traffic to datagrams. All three have real-socket conformance coverage.
+- Two interchangeable realtime transports sharing one bounded single-owner Tokio worker and protocol bridge: native QUIC and browser WebTransport, which map unreliable/best-effort traffic to datagrams. Both have real-socket conformance coverage.
 - Uniform 2D/3D spatial routing for replaceable state, with owner-updated local positions, cell indexes, radius filtering, optional exact distance checks, and reliable-event bypass.
 - A bounded local load runner for broadcast, topic, 2D-grid, and 3D-grid scenarios with measured publish latency, delivery, queue, and machine metadata.
 - An integrated inference plane: a bounded per-request provider queue, a provider-neutral capability/request model, and a deterministic tool-call gateway that lets model output propose state changes without ever mutating state directly.
@@ -38,7 +38,9 @@ cargo test --workspace --all-targets --all-features
 cargo run -p woven-server
 ```
 
-The server listens on `127.0.0.1:8080` (WebSocket at `/ws`), `127.0.0.1:8081` (QUIC), and `127.0.0.1:8082` (WebTransport), using an ephemeral self-signed development certificate for the two UDP-based transports.
+The server listens on `127.0.0.1:8080` (HTTP control plane), `127.0.0.1:8081` (QUIC), and
+`127.0.0.1:8082` (WebTransport), using an ephemeral self-signed development certificate for
+the two UDP-based transports.
 
 Common commands:
 
