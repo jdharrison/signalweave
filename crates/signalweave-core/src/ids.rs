@@ -44,10 +44,7 @@ macro_rules! define_id {
 }
 
 define_id!(NamespaceId);
-define_id!(WorkspaceId);
-define_id!(PoolId);
 define_id!(SessionId);
-define_id!(ServerId);
 define_id!(SpaceId);
 define_id!(EntityId);
 define_id!(ConnectionId);

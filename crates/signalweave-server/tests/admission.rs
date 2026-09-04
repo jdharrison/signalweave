@@ -2,8 +2,8 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use serde_json::json;
 use signalweave_core::{
-    AdmissionController, AdmissionMetadata, CapacityUpdate, NamespaceId, NodeId, PoolId,
-    QueuePolicy, SessionId, SessionKey, UsageCounters, WorkspaceId,
+    AdmissionController, AdmissionMetadata, CapacityUpdate, NamespaceId, NodeId, QueuePolicy,
+    SessionId, SessionKey, UsageCounters,
 };
 use signalweave_server::admission::{self, AdmissionState};
 use tower::ServiceExt;
@@ -12,9 +12,7 @@ fn state_with_capacity(capacity: u32) -> AdmissionState {
     let server_id = SessionKey::new(NamespaceId::new(1), SessionId::new(1));
     let metadata = AdmissionMetadata {
         node_id: NodeId::new(1),
-        workspace_id: WorkspaceId::new(1),
-        pool_id: PoolId::new(1),
-        server_id,
+        session: server_id,
     };
     std::sync::Arc::new(tokio::sync::Mutex::new(AdmissionController::new(
         metadata,

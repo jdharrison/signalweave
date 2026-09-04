@@ -13,9 +13,8 @@ mod worker;
 
 pub use admission::{
     AdmissionController, AdmissionLease, AdmissionMetadata, AdmissionSnapshot, CancelResult,
-    CapacityPoolRef, CapacityUpdate, ClaimError, IdempotencyKey, JoinDecision, JoinRequest,
-    QueuePolicy, QueueStatus, QueueTicket, QueueTicketId, RejectionReason, ReleaseReason,
-    ResumeToken, VirtualServerCapacity,
+    CapacityUpdate, ClaimError, IdempotencyKey, JoinDecision, JoinRequest, QueuePolicy,
+    QueueStatus, QueueTicket, QueueTicketId, RejectionReason, ReleaseReason, ResumeToken,
 };
 pub use auth::{
     AccessGrant, AuthError, AuthenticatedPrincipal, Authenticator, AuthorizationGrants,
@@ -31,8 +30,8 @@ pub use core::{
     SignalweaveCore,
 };
 pub use ids::{
-    ChannelId, ConnectionId, EntityId, NamespaceId, NodeId, PoolId, PrincipalId, ServerId,
-    SessionId, SessionKey, SpaceEpoch, SpaceId, SpaceKey, WorkspaceId,
+    ChannelId, ConnectionId, EntityId, NamespaceId, NodeId, PrincipalId, SessionId, SessionKey,
+    SpaceEpoch, SpaceId, SpaceKey,
 };
 pub use journal::{
     JournalError, JournalOutbox, JournalOutboxError, JournalRecord, JournalSink, NoopJournalSink,

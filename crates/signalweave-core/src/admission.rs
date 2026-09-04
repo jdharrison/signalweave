@@ -4,9 +4,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::{
-    ConnectionHandle, NodeId, PoolId, PrincipalId, SessionKey, UsageCounters, WorkspaceId,
-};
+use crate::{ConnectionHandle, NodeId, PrincipalId, SessionKey, UsageCounters};
 
 #[allow(clippy::cast_possible_truncation)]
 fn count(value: usize) -> u32 {
@@ -188,29 +186,11 @@ pub struct AdmissionSnapshot {
     pub capacity_revision: u64,
 }
 
-/// Capacity allocation reference for a virtual server.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct VirtualServerCapacity {
-    pub server_id: SessionKey,
-    pub pool: CapacityPoolRef,
-    pub allocated_ccu: u32,
-    pub revision: u64,
-}
-
-/// Reference to the capacity pool that funds a virtual server.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CapacityPoolRef {
-    pub pool_id: PoolId,
-    pub workspace_id: WorkspaceId,
-}
-
-/// Per-virtual-server metadata used by usage windows.
+/// Per-session metadata used by usage windows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AdmissionMetadata {
     pub node_id: NodeId,
-    pub workspace_id: WorkspaceId,
-    pub pool_id: PoolId,
-    pub server_id: SessionKey,
+    pub session: SessionKey,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -304,7 +284,7 @@ impl AdmissionController {
             return JoinDecision::Rejected(RejectionReason::InvalidIdempotencyKey);
         };
 
-        if self.allocated_ccu == 0 {
+        if self.admission_limit() == 0 {
             self.counters.increment_paused_rejections();
             return JoinDecision::Paused;
         }
@@ -325,7 +305,7 @@ impl AdmissionController {
             return JoinDecision::Rejected(RejectionReason::AlreadyQueued);
         }
 
-        if self.occupied() < self.allocated_ccu {
+        if self.occupied() < self.admission_limit() {
             self.counters.increment_immediate_admissions();
             return JoinDecision::Admitted(self.admit(request.principal, now));
         }
@@ -335,7 +315,7 @@ impl AdmissionController {
             return JoinDecision::Rejected(RejectionReason::QueueDisabled);
         }
 
-        if self.waiting.len() >= self.policy.max_depth {
+        if self.queue_depth() >= self.policy.max_depth {
             self.counters.increment_queue_full_rejections();
             return JoinDecision::Rejected(RejectionReason::QueueFull);
         }
@@ -367,14 +347,14 @@ impl AdmissionController {
             return CancelResult::Missing;
         };
         match entry.state {
-            TicketState::Waiting => {
+            TicketState::Waiting | TicketState::Offered(_) => {
                 entry.state = TicketState::Cancelled;
                 self.idempotency_index.remove(&entry.ticket.idempotency_key);
+                self.waiting.retain(|candidate| *candidate != id);
                 self.counters.increment_cancelled_tickets();
                 self.promote_at(now);
                 CancelResult::Cancelled
             }
-            TicketState::Offered(_) => CancelResult::AlreadyOffered,
             TicketState::Admitted => CancelResult::AlreadyAdmitted,
             TicketState::Expired | TicketState::Cancelled => CancelResult::AlreadyExpired,
         }
@@ -405,6 +385,14 @@ impl AdmissionController {
     }
 
     pub fn release_at(&mut self, lease: AdmissionLease, reason: ReleaseReason, now: Instant) {
+        if lease.session != self.metadata.session
+            || self
+                .active
+                .get(&lease.id)
+                .is_none_or(|active| active.principal != lease.principal)
+        {
+            return;
+        }
         let Some(removed) = self.active.remove(&lease.id) else {
             return;
         };
@@ -451,7 +439,7 @@ impl AdmissionController {
         self.counters.set_active_ccu(count(self.active.len()));
         Some(AdmissionLease {
             id: lease_id,
-            session: self.metadata.server_id,
+            session: self.metadata.session,
             principal,
             resume_token: ResumeToken(lease_id),
         })
@@ -463,7 +451,7 @@ impl AdmissionController {
         }
         self.revision = update.revision;
         self.counters.increment_capacity_allocations();
-        if update.allocated_ccu < count(self.active.len()) {
+        if update.allocated_ccu < self.occupied() {
             self.pending_target = Some(update.allocated_ccu);
         } else {
             self.allocated_ccu = update.allocated_ccu;
@@ -505,6 +493,16 @@ impl AdmissionController {
         self.tickets.contains_key(&id)
     }
 
+    /// Verifies that a lease was issued by this session and has not been released.
+    #[must_use]
+    pub fn has_active_lease(&self, lease: AdmissionLease) -> bool {
+        lease.session == self.metadata.session
+            && self
+                .active
+                .get(&lease.id)
+                .is_some_and(|active| active.principal == lease.principal)
+    }
+
     fn admit(&mut self, principal: PrincipalId, now: Instant) -> AdmissionLease {
         let id = self.next_lease;
         self.next_lease += 1;
@@ -520,7 +518,7 @@ impl AdmissionController {
         self.counters.set_active_ccu(count(self.active.len()));
         AdmissionLease {
             id,
-            session: self.metadata.server_id,
+            session: self.metadata.session,
             principal,
             resume_token: ResumeToken(id),
         }
@@ -536,7 +534,7 @@ impl AdmissionController {
         self.next_ticket += 1;
         let ticket = QueueTicket {
             id,
-            session: self.metadata.server_id,
+            session: self.metadata.session,
             principal,
             idempotency_key: idempotency_key.clone(),
         };
@@ -652,14 +650,24 @@ impl AdmissionController {
             self.counters
                 .increment_abandoned_offers_by(abandoned_offers);
         }
+        self.waiting.retain(|id| {
+            matches!(
+                self.tickets.get(id).map(|entry| entry.state),
+                Some(TicketState::Waiting)
+            )
+        });
         self.counters.set_queue_depth(self.queue_depth());
         self.apply_pending();
         self.promote_at(now);
     }
 
+    fn admission_limit(&self) -> u32 {
+        self.pending_target.unwrap_or(self.allocated_ccu)
+    }
+
     fn apply_pending(&mut self) {
         if let Some(target) = self.pending_target
-            && count(self.active.len()) <= target
+            && self.occupied() <= target
         {
             self.allocated_ccu = target;
             self.pending_target = None;
@@ -667,7 +675,7 @@ impl AdmissionController {
     }
 
     fn promote_at(&mut self, now: Instant) {
-        while self.allocated_ccu > 0 && self.occupied() < self.allocated_ccu {
+        while self.admission_limit() > 0 && self.occupied() < self.admission_limit() {
             let Some(id) = self.waiting.pop_front() else {
                 break;
             };
@@ -710,9 +718,7 @@ mod tests {
     fn metadata() -> AdmissionMetadata {
         AdmissionMetadata {
             node_id: NodeId::new(1),
-            workspace_id: WorkspaceId::new(1),
-            pool_id: PoolId::new(1),
-            server_id: SessionKey::new(crate::NamespaceId::new(1), crate::SessionId::new(1)),
+            session: SessionKey::new(crate::NamespaceId::new(1), crate::SessionId::new(1)),
         }
     }
 

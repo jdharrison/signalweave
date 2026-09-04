@@ -18,8 +18,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use signalweave_core::{
     AdmissionController, AdmissionMetadata, AdmissionSnapshot, CapacityUpdate, IdempotencyKey,
-    JoinDecision, JoinRequest, NamespaceId, NodeId, PoolId, PrincipalId, QueuePolicy, QueueStatus,
-    QueueTicketId, RejectionReason, SessionId, SessionKey, UsageCounters, WorkspaceId,
+    JoinDecision, JoinRequest, NamespaceId, NodeId, PrincipalId, QueuePolicy, QueueStatus,
+    QueueTicketId, RejectionReason, SessionId, SessionKey, UsageCounters,
 };
 use tokio::sync::Mutex;
 
@@ -30,9 +30,7 @@ pub fn development_state() -> AdmissionState {
     let server_id = SessionKey::new(NamespaceId::new(1), SessionId::new(1));
     let metadata = AdmissionMetadata {
         node_id: NodeId::new(1),
-        workspace_id: WorkspaceId::new(1),
-        pool_id: PoolId::new(1),
-        server_id,
+        session: server_id,
     };
     Arc::new(Mutex::new(AdmissionController::new(
         metadata,

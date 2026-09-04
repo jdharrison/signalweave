@@ -19,27 +19,34 @@ implemented in this milestone:
 
 ## Domain model
 
-A **virtual server** maps to a provisioned Signalweave `SessionKey`. It receives a CCU
-allocation from a capacity pool. The control plane enforces that allocations do not exceed
-pool capacity; the data plane sees only the per-server allocation and configuration.
+A **virtual server** is a Woven.host control-plane record that maps to one provisioned
+Woven `SessionKey`. The host control plane owns account entitlements, capacity pools, billing,
+and the mapping from a customer-visible virtual-server ID to that `SessionKey`. It prevents
+allocations across an account from exceeding its purchased CCU.
+
+Core receives only an authenticated, monotonic per-session update:
 
 ```rust
-VirtualServerCapacity {
-    server_id: SessionKey,
-    pool: CapacityPoolRef { pool_id, workspace_id },
+CapacityUpdate {
     allocated_ccu: u32,
     revision: u64,
 }
 ```
+
+A tenant normally uses one `NamespaceId` and one `SessionId` per virtual server. For example,
+an account with 10 CCU can allocate 5 CCU to `tenant-a / production`, 2 CCU to
+`tenant-a / staging`, and retain 3 CCU for a later allocation. The global Woven fabric hosts
+both sessions; it does not need account or billing identity.
 
 `allocated_ccu == 0` means the server is **paused**. A paused server rejects new join
 requests with `JoinDecision::Paused`; it does not create an endless queue.
 
 ## Admission controller
 
-`AdmissionController` is a single-owner, transport-neutral, in-memory object. Callers
-serialize access through the core worker or an async mutex. All deadline arithmetic uses
-saturating/checked operations so a regressed or mocked clock cannot panic the realtime loop.
+`AdmissionController` is a single-owner, transport-neutral, in-memory object keyed by one
+`SessionKey`. Callers serialize access through the core worker or an async mutex. All deadline
+arithmetic uses saturating/checked operations so a regressed or mocked clock cannot panic the
+realtime loop.
 It is responsible for:
 
 - Allocated capacity and pending capacity targets
@@ -102,9 +109,10 @@ windows.
 ## Capacity allocation changes
 
 - **Increase**: takes effect immediately and promotes the oldest valid queued clients.
-- **Decrease below active CCU**: stores a pending target. Active clients are never
-  disconnected. Once enough clients leave naturally, the allocation drops to the pending
-  target.
+- **Decrease below occupied capacity**: stores a pending target. Active clients are never
+  disconnected, and reconnect reservations and outstanding offers continue to hold their
+  permits. Once enough permits drain naturally, the allocation drops to the pending target.
+  No new client is admitted above the pending target while it drains.
 - **Stale revisions**: updates with `revision <= current_revision` are ignored.
 
 ### Example
@@ -141,9 +149,7 @@ cadence (default 60 seconds). Each window carries:
 UsageWindow {
     schema_version,
     node_id,
-    workspace_id,
-    pool_id,
-    server_id,
+    session: SessionKey,
     window_start,
     window_end,
     sequence,
@@ -189,9 +195,11 @@ to deduplicate retries.
 - queue depth, pending capacity target
 - current capacity revision
 
-The development HTTP adapter exposes this at
-`GET /v1/virtual-servers/{server_id}/snapshot`. It contains no player PII or ticket
-secrets.
+A standalone development HTTP adapter can expose this at
+`GET /v1/virtual-servers/{server_id}/snapshot`. It is intentionally not mounted by the normal
+server composition because it has no production control-plane authenticator. A production adapter
+must resolve the host virtual-server ID to a provisioned `SessionKey` and authorize the
+authenticated principal before it delegates to core.
 
 ## Queue failure behavior
 
@@ -217,7 +225,7 @@ Weaver clients should:
 
 The next protocol adapter to implement is the FlatBuffers wire encoding for join, queue
 status, heartbeat, offer, claim, and structured rejection messages so that Weaver can use
-the binary WebSocket/QUIC/WebTransport transports end-to-end.
+the QUIC/WebTransport transports end-to-end.
 
 ## HTTP routes (development)
 
@@ -230,5 +238,6 @@ DELETE /v1/queues/{ticket}
 GET    /v1/virtual-servers/{server_id}/snapshot
 ```
 
-These routes are unauthenticated in the development server. A production deployment must
-authenticate and authorize them through the host control plane.
+These routes are an unmounted local test adapter with one controller. A production adapter must
+authenticate the caller, resolve the host virtual server to a `SessionKey`, authorize it for that
+session, and route ticket operations to that same session controller.

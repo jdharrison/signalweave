@@ -377,6 +377,8 @@ fn lifecycle_action(command: &Command) -> LifecycleAction {
         Command::TransportConnected
         | Command::Authenticate { .. }
         | Command::JoinSession { .. }
+        | Command::RequestSessionAdmission { .. }
+        | Command::JoinSessionWithAdmission { .. }
         | Command::UpdateEntityPosition { .. }
         | Command::Publish(_)
         | Command::Snapshot { .. }

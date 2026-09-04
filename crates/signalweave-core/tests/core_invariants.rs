@@ -3,14 +3,14 @@ use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
 
 use signalweave_core::{
-    AccessGrant, AuthenticatedPrincipal, AuthorizationGrants, ChannelDefinition, ChannelId,
-    ChannelScope, CoalesceKey, Command, CommandResult, CoordinateFrame, CoreConfig, CoreError,
-    Credentials, DeliveryClass, DevAuthenticator, EntityId, EntityPosition,
-    EntityTransitionRequest, HarnessError, IdKind, JournalRecord, JournalSink, NamespaceId,
-    NoopJournalSink, OutboundMessage, OutboundQueueConfig, ParentAnchor, PersistenceClass,
-    PrincipalId, PublishRateLimit, PublishRequest, RoutingPolicy, SessionId, SessionKey,
-    SignalweaveCore, SpaceDescriptor, SpaceEpoch, SpaceId, SpaceKey, TransportIndependentWorker,
-    WorkerHarness,
+    AccessGrant, AdmissionMetadata, AuthenticatedPrincipal, AuthorizationGrants, CapacityUpdate,
+    ChannelDefinition, ChannelId, ChannelScope, CoalesceKey, Command, CommandResult,
+    CoordinateFrame, CoreConfig, CoreError, Credentials, DeliveryClass, DevAuthenticator, EntityId,
+    EntityPosition, EntityTransitionRequest, HarnessError, IdKind, IdempotencyKey, JoinDecision,
+    JournalRecord, JournalSink, NamespaceId, NodeId, NoopJournalSink, OutboundMessage,
+    OutboundQueueConfig, ParentAnchor, PersistenceClass, PrincipalId, PublishRateLimit,
+    PublishRequest, QueuePolicy, RoutingPolicy, SessionId, SessionKey, SignalweaveCore,
+    SpaceDescriptor, SpaceEpoch, SpaceId, SpaceKey, TransportIndependentWorker, WorkerHarness,
 };
 
 const NAMESPACE_A: NamespaceId = NamespaceId::new(10);
@@ -207,6 +207,112 @@ fn publish_request(
             .then(|| CoalesceKey::new(channel, Some(entity), component)),
         payload: payload.to_vec(),
     }
+}
+
+#[test]
+fn capacity_managed_session_requires_and_releases_admission_lease() {
+    let session = session_a();
+    let mut core = make_core(CoreConfig::default());
+    core.configure_session_admission(
+        session,
+        AdmissionMetadata {
+            node_id: NodeId::new(1),
+            session,
+        },
+        QueuePolicy::default(),
+        CapacityUpdate {
+            allocated_ccu: 1,
+            revision: 1,
+        },
+    )
+    .expect("configure admission");
+
+    let connection = core.transport_connected().expect("connect");
+    core.authenticate(connection, &Credentials::new("alice"))
+        .expect("authenticate");
+    assert_eq!(
+        core.join_session(connection, session),
+        Err(CoreError::AdmissionLeaseRequired(session))
+    );
+
+    let lease = match core
+        .request_session_admission_at(
+            connection,
+            session,
+            IdempotencyKey::new("join-1").expect("key"),
+            Instant::now(),
+        )
+        .expect("admission request")
+    {
+        JoinDecision::Admitted(lease) => lease,
+        decision => panic!("unexpected {decision:?}"),
+    };
+    core.join_session_with_admission(connection, session, lease)
+        .expect("admitted join");
+    core.leave_session(connection, session)
+        .expect("intentional leave");
+
+    let replacement = core.transport_connected().expect("replacement connect");
+    core.authenticate(replacement, &Credentials::new("bob"))
+        .expect("replacement authenticate");
+    assert!(matches!(
+        core.request_session_admission_at(
+            replacement,
+            session,
+            IdempotencyKey::new("join-2").expect("key"),
+            Instant::now(),
+        )
+        .expect("replacement admission"),
+        JoinDecision::Admitted(_)
+    ));
+}
+
+#[test]
+fn transport_loss_releases_an_unjoined_admission_lease() {
+    let session = session_a();
+    let mut core = make_core(CoreConfig::default());
+    core.configure_session_admission(
+        session,
+        AdmissionMetadata {
+            node_id: NodeId::new(1),
+            session,
+        },
+        QueuePolicy::default(),
+        CapacityUpdate {
+            allocated_ccu: 1,
+            revision: 1,
+        },
+    )
+    .expect("configure admission");
+
+    let first = core.transport_connected().expect("connect");
+    core.authenticate(first, &Credentials::new("alice"))
+        .expect("authenticate");
+    assert!(matches!(
+        core.request_session_admission_at(
+            first,
+            session,
+            IdempotencyKey::new("first").expect("key"),
+            Instant::now(),
+        )
+        .expect("admission"),
+        JoinDecision::Admitted(_)
+    ));
+    core.transport_lost(first).expect("disconnect");
+
+    let second = core.transport_connected().expect("connect");
+    core.authenticate(second, &Credentials::new("bob"))
+        .expect("authenticate");
+    assert!(matches!(
+        core.request_session_admission_at(
+            second,
+            session,
+            IdempotencyKey::new("second").expect("key"),
+            Instant::now(),
+        )
+        .expect("replacement admission"),
+        JoinDecision::Admitted(_)
+    ));
 }
 
 #[test]

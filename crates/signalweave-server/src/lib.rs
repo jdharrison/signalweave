@@ -6,13 +6,7 @@ pub mod admission;
 
 use std::{net::SocketAddr, sync::Arc};
 
-use axum::{
-    Json, Router,
-    extract::{State, ws::WebSocketUpgrade},
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
-};
+use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
 use serde::Serialize;
 use signalweave_core::{
     AccessGrant, AuthenticatedPrincipal, AuthorizationGrants, ChannelDefinition, ChannelId,
@@ -23,17 +17,14 @@ use signalweave_core::{
 use signalweave_inference_coordinator::{AiIdentityConfig, CoordinatorConfig};
 use signalweave_inference_test_provider::DeterministicProvider;
 use signalweave_inference_tools::{ToolRegistry, ToolRegistryError, demo as inference_demo};
-use signalweave_transport::UnroutedControl;
+use signalweave_transport::{UnroutedControl, WorkerHandle, spawn_worker};
+use signalweave_transport_quic::webtransport::{
+    WebTransportConfig, serve_endpoint as serve_webtransport_endpoint,
+    server_endpoint as webtransport_server_endpoint,
+};
 use signalweave_transport_quic::{
     PrivateKeyDer, QuicConfig, serve_endpoint as serve_quic_endpoint,
     server_config as quic_server_config, server_endpoint,
-};
-use signalweave_transport_websocket::{
-    WebSocketConfig, WorkerHandle, serve_connection, spawn_worker,
-};
-use signalweave_transport_webtransport::{
-    WebTransportConfig, serve_endpoint as serve_webtransport_endpoint,
-    server_endpoint as webtransport_server_endpoint,
 };
 use tokio::sync::mpsc;
 use tower_http::trace::TraceLayer;
@@ -53,7 +44,6 @@ pub struct ServerConfig {
     pub bind_address: SocketAddr,
     pub quic_bind_address: SocketAddr,
     pub webtransport_bind_address: SocketAddr,
-    pub websocket_path: String,
     pub webtransport_path: String,
     /// Enables the optional adjacent inference plane (`SIGNALWEAVE_INFERENCE_ENABLED`).
     /// Disabled by default; the relay is fully unaffected either way (ADR 0009).
@@ -66,7 +56,6 @@ impl Default for ServerConfig {
             bind_address: SocketAddr::from(([127, 0, 0, 1], 8080)),
             quic_bind_address: SocketAddr::from(([127, 0, 0, 1], 8081)),
             webtransport_bind_address: SocketAddr::from(([127, 0, 0, 1], 8082)),
-            websocket_path: "/ws".to_owned(),
             webtransport_path: "/webtransport".to_owned(),
             inference_enabled: false,
         }
@@ -75,68 +64,42 @@ impl Default for ServerConfig {
 
 #[derive(Clone)]
 struct AppState {
-    websocket: WebSocketConfig,
     quic_enabled: bool,
     webtransport_enabled: bool,
+    webtransport_endpoint: Option<String>,
     inference_enabled: bool,
 }
 
-/// Build the development router and its bounded single-owner core worker. Inference is
-/// disabled on this path; relay behavior here is unaffected by the inference plane
-/// existing anywhere in the workspace.
-pub fn development_router() -> Result<Router, signalweave_core::CoreError> {
-    let worker = TransportIndependentWorker::new(development_core()?);
-    Ok(router_with_worker(spawn_worker(worker)))
-}
-
-/// Build an HTTP router around an already-created core worker.
-pub fn router_with_worker(worker: WorkerHandle) -> Router {
-    router_with_transports(worker, false, false, None)
-}
-
-/// Build the development router with the deterministic inference demo enabled, returning
-/// the AI identity's assigned `EntityId` so callers (tests, examples) can address it.
-pub async fn development_router_with_inference() -> Result<(Router, EntityId), ServerError> {
-    let worker = spawn_worker(TransportIndependentWorker::new(development_core()?));
-    let (inference_tx, entity) = spawn_inference_coordinator(worker.clone()).await?;
-    Ok((
-        router_with_transports(worker, false, false, Some(inference_tx)),
-        entity,
-    ))
-}
-
+/// Build the HTTP/health/capabilities router with the given transport capabilities reported.
+///
+/// `webtransport_endpoint` is the relative `port/path` of the WebTransport endpoint as
+/// advertised in `/v1/capabilities`; clients already connected to this host resolve it
+/// against the host and scheme they used to reach the control plane. `None` when
+/// WebTransport is disabled.
+#[allow(clippy::too_many_arguments)]
 fn router_with_transports(
-    worker: WorkerHandle,
     quic_enabled: bool,
     webtransport_enabled: bool,
-    inference_sink: Option<mpsc::Sender<UnroutedControl>>,
+    webtransport_endpoint: Option<String>,
+    inference_enabled: bool,
 ) -> Router {
-    let inference_enabled = inference_sink.is_some();
-    let mut websocket_config = WebSocketConfig::new(worker);
-    websocket_config.inference_sink = inference_sink;
     let state = Arc::new(AppState {
-        websocket: websocket_config,
         quic_enabled,
         webtransport_enabled,
+        webtransport_endpoint,
         inference_enabled,
     });
-    let admission_state = admission::development_state();
     Router::new()
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
         .route("/metrics", get(metrics))
         .route("/v1/capabilities", get(capabilities))
-        .route("/ws", get(websocket))
-        .merge(admission::routes().with_state(admission_state))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
 
 /// Serve the development composition on `config.bind_address`.
 pub async fn serve(config: ServerConfig) -> Result<(), ServerError> {
-    if config.websocket_path != "/ws" {
-        return Err(ServerError::UnsupportedWebSocketPath);
-    }
     let worker = spawn_worker(TransportIndependentWorker::new(development_core()?));
     let inference_sink = if config.inference_enabled {
         let (inference_tx, _entity) = spawn_inference_coordinator(worker.clone()).await?;
@@ -149,6 +112,8 @@ pub async fn serve(config: ServerConfig) -> Result<(), ServerError> {
     quic_config.inference_sink = inference_sink.clone();
     tokio::spawn(serve_quic_endpoint(quic, quic_config));
     let webtransport = development_webtransport_endpoint(config.webtransport_bind_address)?;
+    let webtransport_port = webtransport.local_addr()?.port();
+    let webtransport_path = config.webtransport_path.clone();
     let mut webtransport_config = WebTransportConfig::new(worker.clone());
     webtransport_config.path = Arc::from(config.webtransport_path);
     webtransport_config.inference_sink = inference_sink.clone();
@@ -159,10 +124,83 @@ pub async fn serve(config: ServerConfig) -> Result<(), ServerError> {
     let listener = tokio::net::TcpListener::bind(config.bind_address).await?;
     axum::serve(
         listener,
-        router_with_transports(worker, true, true, inference_sink),
+        router_with_transports(
+            true,
+            true,
+            Some(format!("{webtransport_port}{webtransport_path}")),
+            inference_sink.is_some(),
+        ),
     )
     .await?;
     Ok(())
+}
+
+/// URLs for a development server started on ephemeral ports.
+#[derive(Clone, Debug)]
+pub struct DevServeUrls {
+    /// HTTP control-plane base, e.g. `http://127.0.0.1:PORT`.
+    pub http: String,
+    /// Native QUIC connection URL, e.g. `quic://127.0.0.1:PORT`.
+    pub quic: String,
+    /// WebTransport connection URL, e.g. `wtransport://127.0.0.1:PORT/webtransport`.
+    pub webtransport: String,
+    /// The AI identity's `EntityId` when inference is enabled, otherwise `None`.
+    pub ai_entity: Option<EntityId>,
+}
+
+/// Start the full development composition (HTTP + QUIC + WebTransport) on ephemeral ports and
+/// return the connection URLs. Intended for integration tests and local tooling.
+///
+/// When `inference_enabled` is true, the deterministic AI demo is started and its `EntityId`
+/// is returned via [`DevServeUrls::ai_entity`].
+pub async fn serve_dev_ephemeral(inference_enabled: bool) -> Result<DevServeUrls, ServerError> {
+    let worker = spawn_worker(TransportIndependentWorker::new(development_core()?));
+    let (inference_sink, ai_entity) = if inference_enabled {
+        let (tx, entity) = spawn_inference_coordinator(worker.clone()).await?;
+        (Some(tx), Some(entity))
+    } else {
+        (None, None)
+    };
+
+    let quic = development_quic_endpoint(SocketAddr::from(([127, 0, 0, 1], 0)))?;
+    let quic_address = quic.local_addr()?;
+    let mut quic_config = QuicConfig::new(worker.clone());
+    quic_config.inference_sink = inference_sink.clone();
+    tokio::spawn(serve_quic_endpoint(quic, quic_config));
+
+    let webtransport = development_webtransport_endpoint(SocketAddr::from(([127, 0, 0, 1], 0)))?;
+    let webtransport_address = webtransport.local_addr()?;
+    let mut webtransport_config = WebTransportConfig::new(worker);
+    webtransport_config.path = Arc::from("/webtransport");
+    webtransport_config.inference_sink = inference_sink.clone();
+    tokio::spawn(serve_webtransport_endpoint(
+        webtransport,
+        webtransport_config,
+    ));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let http_address = listener.local_addr()?;
+    let webtransport_port = webtransport_address.port();
+    let http_handle = tokio::spawn(async move {
+        let _ = axum::serve(
+            listener,
+            router_with_transports(
+                true,
+                true,
+                Some(format!("{webtransport_port}/webtransport")),
+                inference_sink.is_some(),
+            ),
+        )
+        .await;
+    });
+    std::mem::drop(http_handle);
+
+    Ok(DevServeUrls {
+        http: format!("http://{http_address}"),
+        quic: format!("quic://{quic_address}"),
+        webtransport: format!("wtransport://127.0.0.1:{webtransport_port}/webtransport"),
+        ai_entity,
+    })
 }
 
 /// Registers the demo tool set, spawns the AI identity's core connection, and starts the
@@ -216,7 +254,6 @@ fn ai_identity_config() -> AiIdentityConfig {
 pub enum ServerError {
     Io(std::io::Error),
     Core(signalweave_core::CoreError),
-    UnsupportedWebSocketPath,
     QuicConfiguration(String),
     Inference(String),
 }
@@ -254,9 +291,14 @@ struct CapabilitiesResponse {
     features: Vec<&'static str>,
     max_frame_bytes: u32,
     max_payload_bytes: u32,
+    /// Relative `port/path` of the WebTransport endpoint, resolved against the host
+    /// the client already used to reach this control plane. Present only when
+    /// WebTransport is enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    webtransport: Option<String>,
 }
 async fn capabilities(State(state): State<Arc<AppState>>) -> Json<CapabilitiesResponse> {
-    let mut transports = vec!["websocket"];
+    let mut transports = Vec::new();
     if state.quic_enabled {
         transports.push("quic");
     }
@@ -273,19 +315,13 @@ async fn capabilities(State(state): State<Arc<AppState>>) -> Json<CapabilitiesRe
         features,
         max_frame_bytes: 1_048_576,
         max_payload_bytes: 262_144,
+        webtransport: state.webtransport_endpoint.clone(),
     })
-}
-async fn websocket(
-    State(state): State<Arc<AppState>>,
-    upgrade: WebSocketUpgrade,
-) -> impl IntoResponse {
-    let websocket = state.websocket.clone();
-    upgrade.on_upgrade(move |socket| serve_connection(socket, websocket))
 }
 
 fn development_webtransport_endpoint(
     bind_address: SocketAddr,
-) -> Result<signalweave_transport_webtransport::ServerEndpoint, ServerError> {
+) -> Result<signalweave_transport_quic::webtransport::ServerEndpoint, ServerError> {
     let identity = wtransport::Identity::self_signed(["localhost", "127.0.0.1"])
         .map_err(|error| ServerError::QuicConfiguration(error.to_string()))?;
     webtransport_server_endpoint(bind_address, identity).map_err(ServerError::Io)

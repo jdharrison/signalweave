@@ -2,14 +2,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant};
 
 use crate::{
-    AccessGrant, AuthError, AuthenticatedPrincipal, Authenticator, AuthorityContext,
-    AuthorityEmission, AuthorityOutcome, AuthorityRejection, ChannelDefinition, ChannelId,
-    ChannelScope, CoalesceKey, ConnectionId, Credentials, DeliveryClass, EntityId, EntityPosition,
-    EntitySnapshot, JournalOutbox, JournalRecord, NamespaceId, OutboundMessage, OutboundQueue,
-    OutboundQueueConfig, ParentAnchor, PersistenceClass, PositionValidationError, PrincipalId,
-    ProposedMessage, QueueConfigError, QueueError, QueueEviction, QueuePush, RoutingPolicy,
-    SessionKey, SessionSnapshot, SpaceDescriptor, SpaceEpoch, SpaceId, SpaceKey, SpaceSnapshot,
-    SpaceValidationError, StateSnapshot,
+    AccessGrant, AdmissionController, AdmissionLease, AdmissionMetadata, AuthError,
+    AuthenticatedPrincipal, Authenticator, AuthorityContext, AuthorityEmission, AuthorityOutcome,
+    AuthorityRejection, CapacityUpdate, ChannelDefinition, ChannelId, ChannelScope, CoalesceKey,
+    ConnectionId, Credentials, DeliveryClass, EntityId, EntityPosition, EntitySnapshot,
+    IdempotencyKey, JoinDecision, JournalOutbox, JournalRecord, NamespaceId, OutboundMessage,
+    OutboundQueue, OutboundQueueConfig, ParentAnchor, PersistenceClass, PositionValidationError,
+    PrincipalId, ProposedMessage, QueueConfigError, QueueError, QueueEviction, QueuePolicy,
+    QueuePush, RoutingPolicy, SessionKey, SessionSnapshot, SpaceDescriptor, SpaceEpoch, SpaceId,
+    SpaceKey, SpaceSnapshot, SpaceValidationError, StateSnapshot, UsageCounters,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -203,6 +204,9 @@ pub enum CoreError {
     AuthorityEmissionLimitExceeded,
     JournalOutboxSaturated,
     IdExhausted,
+    AdmissionAlreadyConfigured(SessionKey),
+    AdmissionLeaseRequired(SessionKey),
+    InvalidAdmissionLease(SessionKey),
     Queue(QueueError),
 }
 
@@ -499,6 +503,9 @@ pub struct SignalweaveCore<A> {
     connections: BTreeMap<ConnectionId, ConnectionState>,
     sessions: BTreeMap<SessionKey, SessionState>,
     channels: BTreeMap<ChannelId, ChannelDefinition>,
+    admissions: BTreeMap<SessionKey, AdmissionController>,
+    pending_admissions: BTreeMap<(ConnectionId, SessionKey), AdmissionLease>,
+    admission_leases: BTreeMap<(ConnectionId, SessionKey), AdmissionLease>,
     journal_outbox: JournalOutbox,
 }
 
@@ -513,6 +520,9 @@ impl<A: Authenticator> SignalweaveCore<A> {
             connections: BTreeMap::new(),
             sessions: BTreeMap::new(),
             channels: BTreeMap::new(),
+            admissions: BTreeMap::new(),
+            pending_admissions: BTreeMap::new(),
+            admission_leases: BTreeMap::new(),
             journal_outbox: JournalOutbox::new(config.journal_outbox_capacity),
         })
     }
@@ -542,6 +552,79 @@ impl<A: Authenticator> SignalweaveCore<A> {
         }
         self.sessions.insert(key, SessionState::new());
         Ok(())
+    }
+
+    /// Enables capacity admission for an already provisioned session.
+    ///
+    /// The caller is the trusted deployment/control-plane adapter. Core stores no account,
+    /// billing, or capacity-pool identity; it only enforces the supplied per-session limit.
+    pub fn configure_session_admission(
+        &mut self,
+        session_key: SessionKey,
+        metadata: AdmissionMetadata,
+        policy: QueuePolicy,
+        capacity: CapacityUpdate,
+    ) -> Result<(), CoreError> {
+        validate_session_key(session_key)?;
+        if !self.sessions.contains_key(&session_key) {
+            return Err(CoreError::SessionNotFound(session_key));
+        }
+        if metadata.session != session_key {
+            return Err(CoreError::InvalidAdmissionLease(session_key));
+        }
+        if self.admissions.contains_key(&session_key) {
+            return Err(CoreError::AdmissionAlreadyConfigured(session_key));
+        }
+        let counters = std::sync::Arc::new(UsageCounters::new(metadata));
+        self.admissions.insert(
+            session_key,
+            AdmissionController::new(metadata, policy, capacity, counters),
+        );
+        Ok(())
+    }
+
+    /// Applies a trusted, monotonic capacity update to a provisioned session.
+    pub fn apply_session_capacity_at(
+        &mut self,
+        session_key: SessionKey,
+        update: CapacityUpdate,
+        now: Instant,
+    ) -> Result<crate::AdmissionSnapshot, CoreError> {
+        validate_session_key(session_key)?;
+        self.admissions
+            .get_mut(&session_key)
+            .map(|controller| controller.apply_capacity_at(update, now))
+            .ok_or(CoreError::AdmissionLeaseRequired(session_key))
+    }
+
+    /// Requests admission for an authenticated connection to a capacity-managed session.
+    pub fn request_session_admission_at(
+        &mut self,
+        connection: ConnectionId,
+        session_key: SessionKey,
+        idempotency_key: IdempotencyKey,
+        now: Instant,
+    ) -> Result<JoinDecision, CoreError> {
+        validate_connection_id(connection)?;
+        validate_session_key(session_key)?;
+        let principal = self.authenticated_principal(connection)?;
+        require_namespace_read(&principal, session_key.namespace)?;
+        require_session_read(&principal, session_key)?;
+        let controller = self
+            .admissions
+            .get_mut(&session_key)
+            .ok_or(CoreError::AdmissionLeaseRequired(session_key))?;
+        let decision = controller.request_join_at(
+            crate::JoinRequest::new(principal.principal_id, idempotency_key),
+            now,
+        );
+        if let JoinDecision::Admitted(lease) = decision {
+            self.pending_admissions
+                .insert((connection, session_key), lease);
+            Ok(JoinDecision::Admitted(lease))
+        } else {
+            Ok(decision)
+        }
     }
 
     pub fn install_space(
@@ -717,6 +800,56 @@ impl<A: Authenticator> SignalweaveCore<A> {
         connection: ConnectionId,
         key: SessionKey,
     ) -> Result<(), CoreError> {
+        if self.admissions.contains_key(&key) {
+            return Err(CoreError::AdmissionLeaseRequired(key));
+        }
+        self.join_session_unchecked_admission(connection, key)
+    }
+
+    /// Joins a capacity-managed session after the transport-neutral admission controller has
+    /// issued a lease for this authenticated principal.
+    pub fn join_session_with_admission(
+        &mut self,
+        connection: ConnectionId,
+        key: SessionKey,
+        lease: AdmissionLease,
+    ) -> Result<(), CoreError> {
+        validate_connection_id(connection)?;
+        validate_session_key(key)?;
+        let principal = self.authenticated_principal(connection)?;
+        if lease.session != key || lease.principal != principal.principal_id {
+            return Err(CoreError::InvalidAdmissionLease(key));
+        }
+        if let Some(bound) = self.admission_leases.get(&(connection, key)) {
+            return if *bound == lease {
+                Ok(())
+            } else {
+                Err(CoreError::InvalidAdmissionLease(key))
+            };
+        }
+        if self.pending_admissions.get(&(connection, key)) != Some(&lease) {
+            return Err(CoreError::InvalidAdmissionLease(key));
+        }
+        let controller = self
+            .admissions
+            .get(&key)
+            .ok_or(CoreError::AdmissionLeaseRequired(key))?;
+        if !controller.has_active_lease(lease)
+            || self.admission_leases.values().any(|bound| *bound == lease)
+        {
+            return Err(CoreError::InvalidAdmissionLease(key));
+        }
+        self.join_session_unchecked_admission(connection, key)?;
+        self.pending_admissions.remove(&(connection, key));
+        self.admission_leases.insert((connection, key), lease);
+        Ok(())
+    }
+
+    fn join_session_unchecked_admission(
+        &mut self,
+        connection: ConnectionId,
+        key: SessionKey,
+    ) -> Result<(), CoreError> {
         validate_connection_id(connection)?;
         validate_session_key(key)?;
         let principal = self.authenticated_principal(connection)?;
@@ -756,6 +889,7 @@ impl<A: Authenticator> SignalweaveCore<A> {
         validate_connection_id(connection)?;
         validate_session_key(key)?;
         self.require_membership(connection, key)?;
+        self.release_session_admission(connection, key, crate::ReleaseReason::Intentional);
         Ok(self.detach_connection_from_session(connection, key))
     }
 
@@ -1594,7 +1728,22 @@ impl<A: Authenticator> SignalweaveCore<A> {
             .collect::<Vec<_>>();
         let mut summary = CleanupSummary::default();
         for key in memberships {
+            self.release_session_admission(connection, key, crate::ReleaseReason::Unexpected);
             summary.add(self.detach_connection_from_session(connection, key));
+        }
+        let pending_sessions = self
+            .pending_admissions
+            .keys()
+            .filter_map(|(pending_connection, session)| {
+                (*pending_connection == connection).then_some(*session)
+            })
+            .collect::<Vec<_>>();
+        for session in pending_sessions {
+            if let Some(lease) = self.pending_admissions.remove(&(connection, session))
+                && let Some(controller) = self.admissions.get_mut(&session)
+            {
+                controller.release_at(lease, crate::ReleaseReason::Intentional, Instant::now());
+            }
         }
         let state = self
             .connections
@@ -1602,6 +1751,20 @@ impl<A: Authenticator> SignalweaveCore<A> {
             .ok_or(CoreError::UnknownConnection(connection))?;
         summary.queued_messages_discarded += state.outbound.len();
         Ok(summary)
+    }
+
+    fn release_session_admission(
+        &mut self,
+        connection: ConnectionId,
+        session: SessionKey,
+        reason: crate::ReleaseReason,
+    ) {
+        let Some(lease) = self.admission_leases.remove(&(connection, session)) else {
+            return;
+        };
+        if let Some(controller) = self.admissions.get_mut(&session) {
+            controller.release_at(lease, reason, Instant::now());
+        }
     }
 
     fn authenticated_principal(

@@ -4,17 +4,15 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use signalweave_core::{
-    AdmissionMetadata, JsonlFileSink, MemoryUsageSink, NamespaceId, NodeId, NoopUsageSink, PoolId,
+    AdmissionMetadata, JsonlFileSink, MemoryUsageSink, NamespaceId, NodeId, NoopUsageSink,
     PrincipalId, SessionId, SessionKey, SinkHealth, SpoolingUsageSink, UsageAggregator,
-    UsageCounters, UsageMetrics, UsageSink, UsageWindow, WorkspaceId,
+    UsageCounters, UsageMetrics, UsageSink, UsageWindow,
 };
 
 fn metadata() -> AdmissionMetadata {
     AdmissionMetadata {
         node_id: NodeId::new(1),
-        workspace_id: WorkspaceId::new(1),
-        pool_id: PoolId::new(1),
-        server_id: SessionKey::new(NamespaceId::new(1), SessionId::new(1)),
+        session: SessionKey::new(NamespaceId::new(1), SessionId::new(1)),
     }
 }
 
@@ -22,9 +20,7 @@ fn window() -> UsageWindow {
     UsageWindow {
         schema_version: 1,
         node_id: NodeId::new(1),
-        workspace_id: WorkspaceId::new(1),
-        pool_id: PoolId::new(1),
-        server_id: SessionKey::new(NamespaceId::new(1), SessionId::new(1)),
+        session: SessionKey::new(NamespaceId::new(1), SessionId::new(1)),
         window_start: SystemTime::UNIX_EPOCH,
         window_end: SystemTime::UNIX_EPOCH + Duration::from_secs(60),
         sequence: 1,

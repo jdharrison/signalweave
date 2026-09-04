@@ -1,9 +1,11 @@
 use std::collections::VecDeque;
+use std::time::Instant;
 
 use crate::{
-    Authenticator, CleanupSummary, ConnectionId, CoreError, Credentials, EntityId, EntityPosition,
-    EntityTransition, EntityTransitionRequest, OutboundMessage, PrincipalId, PublishOutcome,
-    PublishRequest, SessionKey, SessionSnapshot, SignalweaveCore, SpaceEpoch, SpaceKey,
+    AdmissionLease, Authenticator, CleanupSummary, ConnectionId, CoreError, Credentials, EntityId,
+    EntityPosition, EntityTransition, EntityTransitionRequest, IdempotencyKey, JoinDecision,
+    OutboundMessage, PrincipalId, PublishOutcome, PublishRequest, SessionKey, SessionSnapshot,
+    SignalweaveCore, SpaceEpoch, SpaceKey,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -16,6 +18,16 @@ pub enum Command {
     JoinSession {
         connection: ConnectionId,
         session: SessionKey,
+    },
+    RequestSessionAdmission {
+        connection: ConnectionId,
+        session: SessionKey,
+        idempotency_key: IdempotencyKey,
+    },
+    JoinSessionWithAdmission {
+        connection: ConnectionId,
+        session: SessionKey,
+        lease: AdmissionLease,
     },
     LeaveSession {
         connection: ConnectionId,
@@ -64,6 +76,7 @@ pub enum CommandResult {
     Connected(ConnectionId),
     Authenticated(PrincipalId),
     Joined,
+    Admission(JoinDecision),
     Left(CleanupSummary),
     Subscribed,
     Unsubscribed(CleanupSummary),
@@ -116,6 +129,22 @@ impl<A: Authenticator> TransportIndependentWorker<A> {
             } => self
                 .core
                 .join_session(connection, session)
+                .map(|()| CommandResult::Joined),
+            Command::RequestSessionAdmission {
+                connection,
+                session,
+                idempotency_key,
+            } => self
+                .core
+                .request_session_admission_at(connection, session, idempotency_key, Instant::now())
+                .map(CommandResult::Admission),
+            Command::JoinSessionWithAdmission {
+                connection,
+                session,
+                lease,
+            } => self
+                .core
+                .join_session_with_admission(connection, session, lease)
                 .map(|()| CommandResult::Joined),
             Command::LeaveSession {
                 connection,

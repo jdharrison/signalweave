@@ -5,16 +5,14 @@ use std::time::{Duration, Instant};
 
 use signalweave_core::{
     AdmissionController, AdmissionMetadata, CapacityUpdate, IdempotencyKey, JoinDecision,
-    JoinRequest, NamespaceId, NodeId, PoolId, PrincipalId, QueuePolicy, QueueStatus, QueueTicketId,
-    RejectionReason, ReleaseReason, SessionId, SessionKey, UsageCounters, WorkspaceId,
+    JoinRequest, NamespaceId, NodeId, PrincipalId, QueuePolicy, QueueStatus, QueueTicketId,
+    RejectionReason, ReleaseReason, SessionId, SessionKey, UsageCounters,
 };
 
 fn metadata() -> AdmissionMetadata {
     AdmissionMetadata {
         node_id: NodeId::new(1),
-        workspace_id: WorkspaceId::new(1),
-        pool_id: PoolId::new(1),
-        server_id: SessionKey::new(NamespaceId::new(1), SessionId::new(1)),
+        session: SessionKey::new(NamespaceId::new(1), SessionId::new(1)),
     }
 }
 
@@ -60,6 +58,59 @@ fn ten_slots_admit_ten_and_queue_five() {
     }
     assert_eq!((admitted, queued), (10, 5));
     assert_eq!(controller.snapshot().active_ccu, 10);
+}
+
+#[test]
+fn cancellation_reclaims_bounded_queue_capacity() {
+    let now = Instant::now();
+    let mut controller = controller(1);
+    let _ = controller.request_join_at(join(1, "a"), now);
+    let ticket = match controller.request_join_at(join(2, "b"), now) {
+        JoinDecision::Queued(ticket) => ticket,
+        decision => panic!("unexpected {decision:?}"),
+    };
+
+    assert_eq!(
+        controller.cancel_at(ticket.id, now),
+        signalweave_core::CancelResult::Cancelled
+    );
+    assert!(matches!(
+        controller.request_join_at(join(3, "c"), now),
+        JoinDecision::Queued(_)
+    ));
+}
+
+#[test]
+fn capacity_decrease_waits_for_reconnect_reservations() {
+    let now = Instant::now();
+    let mut controller = controller(2);
+    let first = match controller.request_join_at(join(1, "a"), now) {
+        JoinDecision::Admitted(lease) => lease,
+        decision => panic!("unexpected {decision:?}"),
+    };
+    let second = match controller.request_join_at(join(2, "b"), now) {
+        JoinDecision::Admitted(lease) => lease,
+        decision => panic!("unexpected {decision:?}"),
+    };
+
+    controller.release_at(first, ReleaseReason::Unexpected, now);
+    controller.apply_capacity_at(
+        CapacityUpdate {
+            allocated_ccu: 1,
+            revision: 2,
+        },
+        now,
+    );
+    assert_eq!(controller.snapshot().pending_target, Some(1));
+    assert_eq!(controller.snapshot().allocated_ccu, 2);
+
+    controller.release_at(second, ReleaseReason::Intentional, now);
+    assert_eq!(controller.snapshot().pending_target, None);
+    assert_eq!(controller.snapshot().allocated_ccu, 1);
+    assert!(matches!(
+        controller.request_join_at(join(3, "c"), now),
+        JoinDecision::Queued(_)
+    ));
 }
 
 #[test]

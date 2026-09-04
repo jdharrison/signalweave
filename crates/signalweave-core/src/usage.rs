@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
-use crate::{AdmissionMetadata, NodeId, PoolId, PrincipalId, SessionKey, WorkspaceId};
+use crate::{AdmissionMetadata, NodeId, PrincipalId, SessionKey};
 
 /// Current schema version for persisted usage windows.
 pub const USAGE_SCHEMA_VERSION: u16 = 1;
@@ -57,9 +57,7 @@ pub struct UsageMetrics {
 pub struct UsageWindow {
     pub schema_version: u16,
     pub node_id: NodeId,
-    pub workspace_id: WorkspaceId,
-    pub pool_id: PoolId,
-    pub server_id: SessionKey,
+    pub session: SessionKey,
     pub window_start: SystemTime,
     pub window_end: SystemTime,
     pub sequence: u64,
@@ -76,8 +74,8 @@ impl UsageWindow {
             "swu:{}:{}:{}:{}:{}",
             self.schema_version,
             self.node_id.get(),
-            self.server_id.namespace.get(),
-            self.server_id.session.get(),
+            self.session.namespace.get(),
+            self.session.session.get(),
             self.sequence
         )
     }
@@ -730,9 +728,7 @@ impl UsageAggregator {
                 finalized.push(UsageWindow {
                     schema_version: USAGE_SCHEMA_VERSION,
                     node_id: self.node_id,
-                    workspace_id: counter.metadata.workspace_id,
-                    pool_id: counter.metadata.pool_id,
-                    server_id: counter.metadata.server_id,
+                    session: counter.metadata.session,
                     window_start,
                     window_end,
                     sequence,
@@ -785,9 +781,7 @@ mod tests {
     fn metadata() -> AdmissionMetadata {
         AdmissionMetadata {
             node_id: NodeId::new(1),
-            workspace_id: WorkspaceId::new(1),
-            pool_id: PoolId::new(1),
-            server_id: SessionKey::new(crate::NamespaceId::new(1), crate::SessionId::new(1)),
+            session: SessionKey::new(crate::NamespaceId::new(1), crate::SessionId::new(1)),
         }
     }
 
@@ -832,9 +826,7 @@ mod tests {
         let window = UsageWindow {
             schema_version: 1,
             node_id: NodeId::new(1),
-            workspace_id: WorkspaceId::new(1),
-            pool_id: PoolId::new(1),
-            server_id: SessionKey::new(crate::NamespaceId::new(1), crate::SessionId::new(1)),
+            session: SessionKey::new(crate::NamespaceId::new(1), crate::SessionId::new(1)),
             window_start: SystemTime::UNIX_EPOCH,
             window_end: SystemTime::UNIX_EPOCH,
             sequence: 1,
