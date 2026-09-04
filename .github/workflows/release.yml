@@ -158,6 +158,7 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: crates/woven-client-ts/package-lock.json
+          registry-url: https://registry.npmjs.org
       - name: Refuse existing registry versions
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -246,7 +247,7 @@ jobs:
         run: |
           npm ci
           npm run build
-          npm publish --provenance
+          npm publish --provenance --access public
 
   binaries:
     name: Build ${{ matrix.target }} server binary
