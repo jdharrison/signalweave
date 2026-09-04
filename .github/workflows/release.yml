@@ -3,15 +3,15 @@ name: Release
 on:
   push:
     tags:
-      - "release/v*"
+      - "release/*/v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag, for example release/v0.1.1 or release/v0.1.1-alpha.1
+        description: Existing artifact release tag, for example release/woven-core/v0.1.1-alpha.1
         required: true
         type: string
       confirm:
-        description: Type publish to confirm registry publication and release asset upload
+        description: Type publish to confirm registry publication
         required: true
         type: string
 
@@ -27,17 +27,17 @@ env:
 
 jobs:
   prepare:
-    name: Verify release tag and versions
+    name: Verify artifact release tag and version
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
+      artifact: ${{ steps.release.outputs.artifact }}
     steps:
-      - name: Resolve requested tag
+      - name: Resolve requested artifact release
         id: release
         env:
           EVENT_NAME: ${{ github.event_name }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
           INPUT_TAG: ${{ inputs.tag }}
           REF_NAME: ${{ github.ref_name }}
           CONFIRM: ${{ inputs.confirm }}
@@ -46,13 +46,19 @@ jobs:
             echo "Manual releases require confirm=publish." >&2
             exit 1
           fi
-          TAG="${RELEASE_TAG:-${INPUT_TAG:-$REF_NAME}}"
-          if ! printf '%s' "$TAG" | grep -Eq '^release/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
-            echo "Release tag must use release/vX.Y.Z SemVer form: $TAG" >&2
+
+          TAG="${INPUT_TAG:-$REF_NAME}"
+          if ! printf '%s' "$TAG" | grep -Eq '^release/(woven-core|woven-protocol|woven-transport|woven-transport-quic|woven-inference-core|woven-inference-tools|woven-inference-test-provider|woven-inference-coordinator|woven-client|woven-server|npm-woven-client)/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+            echo "Release tag must use release/<artifact>/vX.Y.Z SemVer form: $TAG" >&2
             exit 1
           fi
+
+          RELEASE="${TAG#release/}"
+          ARTIFACT="${RELEASE%%/*}"
+          VERSION="${RELEASE#*/v}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#release/v}" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
 
   validate:
     name: Validate release contents
@@ -66,8 +72,7 @@ jobs:
       - name: Confirm exact tag checkout
         env:
           TAG: ${{ needs.prepare.outputs.tag }}
-        run: |
-          test "$(git describe --exact-match --tags HEAD)" = "$TAG"
+        run: test "$(git describe --exact-match --tags HEAD)" = "$TAG"
       - uses: dtolnay/rust-toolchain@1.98.0
         with:
           components: clippy, rustfmt
@@ -77,37 +82,41 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: crates/woven-client-ts/package-lock.json
-      - name: Verify coordinated package versions
+      - name: Verify selected artifact version
         env:
+          ARTIFACT: ${{ needs.prepare.outputs.artifact }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          cargo metadata --no-deps --format-version 1 > metadata.json
-          python3 - <<'PY'
+          case "$ARTIFACT" in
+            woven-core) MANIFEST=crates/woven-core/Cargo.toml ;;
+            woven-protocol) MANIFEST=crates/woven-protocol/Cargo.toml ;;
+            woven-transport) MANIFEST=crates/woven-transport/Cargo.toml ;;
+            woven-transport-quic) MANIFEST=crates/woven-transport-quic/Cargo.toml ;;
+            woven-inference-core) MANIFEST=crates/woven-inference-core/Cargo.toml ;;
+            woven-inference-tools) MANIFEST=crates/woven-inference-tools/Cargo.toml ;;
+            woven-inference-test-provider) MANIFEST=crates/woven-inference-test-provider/Cargo.toml ;;
+            woven-inference-coordinator) MANIFEST=crates/woven-inference-coordinator/Cargo.toml ;;
+            woven-client) MANIFEST=crates/woven-client-rust/Cargo.toml ;;
+            woven-server) MANIFEST=crates/woven-server/Cargo.toml ;;
+            npm-woven-client) MANIFEST=crates/woven-client-ts/package.json ;;
+            *) echo "Unsupported artifact: $ARTIFACT" >&2; exit 1 ;;
+          esac
+
+          MANIFEST="$MANIFEST" python3 - <<'PY'
           import json
           import os
           import sys
+          import tomllib
 
-          version = os.environ["VERSION"]
-          published = {
-              "woven-core",
-              "woven-protocol",
-              "woven-transport",
-              "woven-transport-quic",
-              "woven-inference-core",
-              "woven-inference-tools",
-              "woven-inference-test-provider",
-              "woven-inference-coordinator",
-              "woven-client",
-              "woven-server",
-          }
-          packages = {package["name"]: package["version"] for package in json.load(open("metadata.json"))["packages"]}
-          mismatches = [name for name in sorted(published) if packages.get(name) != version]
-          if mismatches:
-              for name in mismatches:
-                  print(f"{name}: expected {version}, found {packages.get(name)!r}", file=sys.stderr)
+          manifest = os.environ["MANIFEST"]
+          expected = os.environ["VERSION"]
+          with open(manifest, "rb") as source:
+              package = json.load(source) if manifest.endswith(".json") else tomllib.load(source)
+          actual = package["version"] if manifest.endswith(".json") else package["package"]["version"]
+          if actual != expected:
+              print(f"{manifest}: expected {expected}, found {actual!r}", file=sys.stderr)
               sys.exit(1)
           PY
-          node --input-type=module -e 'import packageJson from "./crates/woven-client-ts/package.json" with { type: "json" }; if (packageJson.version !== process.env.VERSION) { throw new Error(`@signalweave/woven-client: expected ${process.env.VERSION}, found ${packageJson.version}`); }'
       - name: Install TypeScript dependencies
         working-directory: crates/woven-client-ts
         run: npm ci
@@ -141,7 +150,7 @@ jobs:
         run: cargo audit
 
   publish:
-    name: Publish crates.io and npm packages
+    name: Publish selected artifact
     needs: [prepare, validate, security-audit]
     runs-on: ubuntu-latest
     permissions:
@@ -159,97 +168,52 @@ jobs:
           cache: npm
           cache-dependency-path: crates/woven-client-ts/package-lock.json
           registry-url: https://registry.npmjs.org
-      - name: Refuse existing registry versions
+      - name: Refuse existing selected registry version
         env:
+          ARTIFACT: ${{ needs.prepare.outputs.artifact }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          registry_status() {
-            curl --location --silent --show-error --output /dev/null --write-out '%{http_code}' \
-              --user-agent 'woven-release-check/1.0' "$1"
-          }
+          case "$ARTIFACT" in
+            npm-woven-client) REGISTRY_URL="https://registry.npmjs.org/%40signalweave%2Fwoven-client/$VERSION" ;;
+            *) REGISTRY_URL="https://crates.io/api/v1/crates/$ARTIFACT/$VERSION" ;;
+          esac
 
-          for package in woven-core woven-protocol woven-transport woven-transport-quic woven-inference-core woven-inference-tools woven-inference-test-provider woven-inference-coordinator woven-client woven-server; do
-            status="$(registry_status "https://crates.io/api/v1/crates/$package/$VERSION")" || {
-              echo "Unable to check crates.io for $package $VERSION." >&2
-              exit 1
-            }
-            case "$status" in
-              200)
-                echo "crates.io already contains $package $VERSION; releases are immutable." >&2
-                exit 1
-                ;;
-              404) ;;
-              *)
-                echo "crates.io returned HTTP $status while checking $package $VERSION; refusing to publish." >&2
-                exit 1
-                ;;
-            esac
-          done
-
-          status="$(registry_status "https://registry.npmjs.org/%40signalweave%2Fwoven-client/$VERSION")" || {
-            echo "Unable to check npm for @signalweave/woven-client $VERSION." >&2
+          status="$(curl --location --silent --show-error --output /dev/null --write-out '%{http_code}' --user-agent 'woven-release-check/1.0' "$REGISTRY_URL")" || {
+            echo "Unable to check the registry for $ARTIFACT $VERSION." >&2
             exit 1
           }
           case "$status" in
             200)
-              echo "npm already contains @signalweave/woven-client $VERSION; releases are immutable." >&2
+              echo "Registry already contains $ARTIFACT $VERSION; releases are immutable." >&2
               exit 1
               ;;
             404) ;;
             *)
-              echo "npm returned HTTP $status while checking @signalweave/woven-client $VERSION; refusing to publish." >&2
+              echo "Registry returned HTTP $status for $ARTIFACT $VERSION; refusing to publish." >&2
               exit 1
               ;;
           esac
-      - name: Publish Rust crates in dependency order
+      - name: Publish selected Rust crate
+        if: needs.prepare.outputs.artifact != 'npm-woven-client'
         env:
+          ARTIFACT: ${{ needs.prepare.outputs.artifact }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           test -n "$CARGO_REGISTRY_TOKEN" || { echo "CARGO_REGISTRY_TOKEN is required for crates.io publication." >&2; exit 1; }
-          publish() {
-            package="$1"
-            output="$(mktemp)"
-            for attempt in 1 2 3 4 5; do
-              if cargo publish --locked -p "$package" >"$output" 2>&1; then
-                cat "$output"
-                rm -f "$output"
-                return 0
-              fi
-              cat "$output" >&2
-              if grep -Eqi 'verified email address|invalid token|not authorized|already exists' "$output"; then
-                rm -f "$output"
-                echo "Publication failed with a non-retryable crates.io error for $package." >&2
-                return 1
-              fi
-              if [ "$attempt" = 5 ]; then
-                rm -f "$output"
-                echo "Failed to publish $package after $attempt attempts." >&2
-                return 1
-              fi
-              echo "Waiting for crates.io index propagation before retrying $package." >&2
-              sleep 30
-            done
-          }
-          publish woven-core
-          publish woven-protocol
-          publish woven-inference-core
-          publish woven-transport
-          publish woven-inference-tools
-          publish woven-inference-test-provider
-          publish woven-transport-quic
-          publish woven-inference-coordinator
-          publish woven-client
-          publish woven-server
+          cargo publish --locked -p "$ARTIFACT"
       - name: Publish TypeScript browser client
+        if: needs.prepare.outputs.artifact == 'npm-woven-client'
         working-directory: crates/woven-client-ts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          test -n "$NODE_AUTH_TOKEN" || { echo "NPM_TOKEN is required for npm publication." >&2; exit 1; }
           npm ci
           npm run build
           npm publish --provenance --access public
 
   binaries:
+    if: needs.prepare.outputs.artifact == 'woven-server'
     name: Build ${{ matrix.target }} server binary
     needs: [prepare, validate, publish]
     strategy:
@@ -318,6 +282,7 @@ jobs:
           if-no-files-found: error
 
   release-assets:
+    if: needs.prepare.outputs.artifact == 'woven-server'
     name: Upload release assets
     needs: [prepare, publish, binaries]
     runs-on: ubuntu-latest

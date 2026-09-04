@@ -1838,7 +1838,7 @@ dependencies = [
 
 [[package]]
 name = "woven-server"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "axum",
  "quinn",

@@ -91,7 +91,7 @@ The two `write_*_fixture` commands regenerate the checked-in protocol golden fix
 
 Pull requests and pushes to `main` run Rust formatting, Clippy, tests, and workspace builds, plus TypeScript formatting, static checks, tests, and package builds. CI never publishes packages, creates releases, or requires registry credentials.
 
-Pushing a `release/vX.Y.Z` tag starts a release automatically. The workflow derives `X.Y.Z` from the tag, checks it against every published Rust package and `@signalweave/woven-client`, validates the full workspace, publishes crates.io packages in dependency order, publishes npm with provenance, then creates the GitHub Release with server archives and SHA-256 checksums. Manual dispatch remains available for an existing release tag and requires `confirm=publish`.
+Pushing a `release/<artifact>/vX.Y.Z` tag starts an artifact release automatically. Each package owns its version; the workflow verifies the selected package matches the tag, validates the full workspace, and refuses an already-published registry version. It publishes only that artifact. `woven-server` releases additionally create a GitHub Release with server archives and SHA-256 checksums. Manual dispatch remains available for an existing artifact tag and requires `confirm=publish`.
 
 Required GitHub Actions secrets:
 
@@ -107,11 +107,11 @@ Supported `woven-server` binary platforms:
 
 ### Maintainer release checklist
 
-1. Update package versions consistently.
+1. Bump only the package being released.
 2. Confirm changelog/release notes.
-3. Push the matching `release/vX.Y.Z` tag.
-4. Monitor the release workflow as it creates the GitHub Release.
-5. Verify crates.io, npm, checksums, and downloaded binaries.
+3. Push `release/<artifact>/vX.Y.Z` (for example, `release/woven-client/v0.1.3`).
+4. Monitor the release workflow; only `woven-server` releases create binary assets and a GitHub Release.
+5. Verify the selected registry package, and for server releases, checksums and downloaded binaries.
 
 Cloud deployment and engine distributions are intentionally not part of this pipeline yet.
 

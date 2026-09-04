@@ -1,6 +1,6 @@
 [package]
 name = "woven-client"
-version.workspace = true
+version = "0.1.2"
 edition.workspace = true
 rust-version.workspace = true
 description = "Native QUIC and WebTransport client for Woven"
