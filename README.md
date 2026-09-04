@@ -98,12 +98,11 @@ Required GitHub Actions secrets:
 - `CARGO_REGISTRY_TOKEN` — crates.io token authorized to publish the Woven crates.
 - `NPM_TOKEN` — npm automation token when npm trusted publishing is not configured. Trusted publishing uses the workflow OIDC identity and provenance instead.
 
-Supported `woven-server` binary platforms:
+Supported `woven-server` binary platform:
 
 - Linux x86_64 (`x86_64-unknown-linux-musl`)
-- macOS arm64 (`aarch64-apple-darwin`)
-- macOS x86_64 (`x86_64-apple-darwin`)
-- Windows x86_64 (`x86_64-pc-windows-msvc`)
+
+Other platforms can build `woven-server` from source with Cargo; prebuilt binaries will be added when they are a supported operational target.
 
 ### Maintainer release checklist
 

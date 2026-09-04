@@ -225,21 +225,7 @@ jobs:
             archive: woven-server-v${{ needs.prepare.outputs.version }}-x86_64-unknown-linux-musl.tar.gz
             binary: woven-server
             format: tar.gz
-          - os: macos-14
-            target: aarch64-apple-darwin
-            archive: woven-server-v${{ needs.prepare.outputs.version }}-aarch64-apple-darwin.tar.gz
-            binary: woven-server
-            format: tar.gz
-          - os: macos-13
-            target: x86_64-apple-darwin
-            archive: woven-server-v${{ needs.prepare.outputs.version }}-x86_64-apple-darwin.tar.gz
-            binary: woven-server
-            format: tar.gz
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            archive: woven-server-v${{ needs.prepare.outputs.version }}-x86_64-pc-windows-msvc.zip
-            binary: woven-server.exe
-            format: zip
+
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
