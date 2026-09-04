@@ -46,18 +46,14 @@ signalweave/
     ├── signalweave-core                    ← transport-neutral sessions, spaces, ownership, queues
     ├── signalweave-protocol                ← FlatBuffers schema, codec, semantic validation, fixtures
     ├── signalweave-transport               ← shared worker handle, lifecycle fan-out, protocol bridge
-    ├── signalweave-transport-websocket     ← binary WebSocket adapter (universal baseline)
-    ├── signalweave-transport-quic          ← native QUIC adapter (Quinn)
-    ├── signalweave-transport-webtransport  ← browser WebTransport adapter
+    ├── signalweave-transport-quic          ← QUIC (Quinn) native + WebTransport browser adapter
     ├── signalweave-server                  ← Axum control plane, development server composition
     ├── signalweave-inference-core          ← capability/request/provider data model, Provider trait
     ├── signalweave-inference-tools         ← bounded tool registry, deterministic tool-call gateway
     ├── signalweave-inference-test-provider ← deterministic scripted provider for tests/dev
     ├── signalweave-inference-coordinator   ← runs an AI identity as an ordinary core connection
     ├── signalweave-client-rust             ← native reference client, integration-test driver
-    ├── signalweave-client-ts               ← generated TypeScript bindings, Node decode scripts
-    ├── signalweave-client-csharp           ← generated C# bindings, xunit decode tests (not a Cargo member)
-    ├── signalweave-client-python           ← generated Python bindings, pytest decode tests (not a Cargo member)
+    ├── signalweave-client-ts               ← generated TS bindings + real WebTransport browser client (codec, encode, mock-tested)
     └── signalweave-loadtest                ← bounded local routing scenarios and measurement
 ```
 
@@ -67,8 +63,8 @@ Do not create empty placeholder crates or modules — every crate above contains
 
 ## Status
 
-Feature-complete for its own scope: transport-neutral core, wire protocol, three
-interchangeable realtime transports, spatial interest routing with a load runner, and an
+Feature-complete for its own scope: transport-neutral core, wire protocol, QUIC and
+WebTransport realtime transports, spatial interest routing with a load runner, and an
 optional adjacent inference plane. See [`docs/status.md`](docs/status.md) for what's
 implemented in each area and [`docs/adr`](docs/adr) for why.
 
@@ -280,7 +276,7 @@ harness.run_pending() → Vec<Result<CommandResult, CoreError>>
 
 ## `signalweave-transport` public API
 
-Shared by every transport adapter (WebSocket, QUIC, WebTransport) and by the inference
+Shared by every transport adapter (QUIC, WebTransport) and by the inference
 coordinator, which uses it exactly like a transport does.
 
 ```rust
@@ -479,7 +475,7 @@ spawn(config, inbound: mpsc::Receiver<UnroutedControl>) → Result<(ConnectionId
 |---|---|
 | 0001 | Core is transport-independent. Networking, routing, authority, persistence, and inference are explicit separate layers |
 | 0002 | QUIC/WebTransport instead of raw UDP. No application-level encryption, congestion control, or fragmentation |
-| 0003 | Binary WebSocket is the universal baseline. Implement and test it before QUIC/WebTransport |
+| 0003 | Binary WebSocket was the universal baseline. **Superseded by ADR 0014** — WebSocket was removed entirely |
 | 0004 | Session owns a graph of spaces. Every space has local coordinates anchored to a parent entity. Cross-space transitions are sequenced and epoch-protected |
 | 0005 | FlatBuffers with pinned versioned schema. Additive-only evolution. Never reuse IDs. Golden fixtures prove cross-language equivalence |
 | 0006 | Bounded queues everywhere. Priority: evict replaceable → drop best-effort → disconnect slow consumer |
@@ -490,6 +486,7 @@ spawn(config, inbound: mpsc::Receiver<UnroutedControl>) → Result<(ConnectionId
 | 0011 | Compute Engine VM + external passthrough NLB for staging. Not Cloud Run (wrong lifecycle). Not GKE until scale justifies it |
 | 0012 | Normal target $10–30/month. No GPU continuously. All cloud mutations approval-gated |
 | 0013 | Deferred complexity list: distributed consensus, GKE, GPU inference, vector DBs, agent frameworks, UDP, app-level fragmentation |
+| 0014 | QUIC/WebTransport only. WebSocket removed as a transport entirely; native clients use QUIC, browsers use WebTransport. Standardized URI is `quic://host:port`; browsers derive WebTransport via the deterministic port convention (WebTransport one port above QUIC, on `/webtransport`) |
 
 ADRs 0011/0012 record decisions made for this repo's own (deferred) cloud staging work.
 Cloud orchestration is now expected to live in a separate consuming project; treat these two
@@ -517,7 +514,7 @@ Cargo workspace resolver: 3, edition: 2024, rust-version: 1.88
 Available: cargo, rustfmt, clippy, Node 22.23.2, npm 10.9.8, .NET SDK 10.0.111, Python 3.12.3, Docker 29.7.2, gh 2.98.0
 Absent: system flatc (vendored via Cargo), Terraform, OpenTofu
 GitHub: jdharrison/woven (public), SSH remote, gh authenticated
-CI: .github/workflows/ci.yml — Rust (format/clippy/test/doc), dependency audit, TypeScript client, C# client, Python client
+CI: .github/workflows/ci.yml — Rust (format/clippy/test/doc), dependency audit, TypeScript client
 ```
 
 Workspace lints (inherited by all crates via `[lints] workspace = true`):

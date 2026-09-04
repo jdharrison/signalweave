@@ -1,7 +1,7 @@
 # Signalweave Status
 
 Signalweave is feature-complete for its own scope: a transport-neutral realtime core, a
-versioned FlatBuffers wire protocol, three interchangeable realtime transports, spatial
+versioned FlatBuffers wire protocol, two interchangeable realtime transports, spatial
 interest routing with a load runner, and an optional adjacent inference plane. It is
 designed to be self-hosted standalone, the way you'd self-host Redis or Postgres, with no
 dependency on any hosted control plane or console.
@@ -24,15 +24,17 @@ fixtures proving byte-for-byte cross-language stability.
 
 **Realtime transports** — an Axum control plane (`signalweave-server`) exposing
 `/healthz`, `/readyz`, `/metrics`, and `/v1/capabilities`; a bounded single-owner Tokio
-worker and protocol bridge shared by every adapter (`signalweave-transport`); binary
-WebSocket (`signalweave-transport-websocket`, the universal baseline); native QUIC
-(`signalweave-transport-quic`) and browser WebTransport
-(`signalweave-transport-webtransport`), both mapping unreliable/best-effort delivery to
-datagrams under a conservative packet budget. Real-socket conformance coverage exists for
-all three, and clients negotiate/observe available transports through `/v1/capabilities`.
-The development HTTP control plane also exposes admission and queue endpoints
-(`/v1/virtual-servers/{server_id}/join`, `/v1/queues/{ticket}`, etc.) and an operational
-snapshot route.
+worker and protocol bridge shared by every adapter (`signalweave-transport`); native QUIC
+and (in the same `signalweave-transport-quic` crate) browser WebTransport, both mapping
+unreliable/best-effort delivery to datagrams under a conservative packet budget. Binary
+WebSocket was removed as a transport (ADR 0014): native clients speak QUIC, browsers speak
+WebTransport, sharing the same envelope codec and delivery-class mapping. Real-socket
+conformance coverage exists for both, and clients negotiate/observe available transports
+through `/v1/capabilities`. The standardized server URI is `quic://host:port` for every
+client; a browser maps it to WebTransport via the deterministic port convention
+(WebTransport one port above QUIC, on `/webtransport`). The development HTTP control plane
+also exposes admission and queue endpoints (`/v1/virtual-servers/{server_id}/join`,
+`/v1/queues/{ticket}`, etc.) and an operational snapshot route.
 
 **Interest management** (`signalweave-core` + `signalweave-loadtest`) — bounded 2D/3D
 spatial grid routing for replaceable state, with owner-updated positions, cell indexes,
@@ -53,13 +55,16 @@ conversation, a read-only tool call, and rejection of a stale state-changing pro
 with no paid service required.
 
 **Reference clients** — a native Rust client (`signalweave-client-rust`) used as the
-integration-test driver; generated TypeScript FlatBuffers bindings (`signalweave-client-ts`)
-with Node scripts validating decode against both a live server frame and checked-in golden
-fixtures; generated C# FlatBuffers bindings (`signalweave-client-csharp`, for Unity and
-other .NET consumers) with xunit tests covering the same two cases; and generated Python
-FlatBuffers bindings (`signalweave-client-python`) with pytest tests covering the same two
-cases. All four are proven against the same checked-in golden fixtures, closing the
-cross-language loop.
+integration-test driver, selecting QUIC or WebTransport automatically from the connection
+URL scheme; and a TypeScript WebTransport browser client (`signalweave-client-ts`) that
+mirrors the Rust client API over the WHATWG `WebTransport` transport, with encode/decode
+tests and a mock-transport client test. The Rust and TypeScript encoders are proven
+wire-compatible in both directions against the same checked-in golden fixtures, closing the
+cross-language loop. These two are the focused validation surface for now; additional
+client languages (previously codec-only C# and Python bindings) are deferred and will be
+expanded one at a time after the two stable clients are hardened. Live transport behavior is
+exercised by the Rust client (QUIC + WebTransport) and the TypeScript client
+(WebTransport).
 
 See [`docs/adr`](adr) for the architecture decisions behind these choices, and
 [`AGENTS.md`](../AGENTS.md) for exact public APIs.

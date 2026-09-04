@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
-    "test:decode": "tsx test/decode-live-server.ts",
+    "test": "tsx --test test/*.test.ts",
     "test:decode-fixture": "tsx test/decode-fixture.ts",
     "test:decode-tool-call-completed": "tsx test/decode-tool-call-completed-fixture.ts"
   },
@@ -14,9 +14,7 @@
   },
   "devDependencies": {
     "@types/node": "22.15.3",
-        "@types/ws": "8.5.14",
     "tsx": "4.19.3",
-    "typescript": "5.8.3",
-    "ws": "8.21.3"
+    "typescript": "5.8.3"
   }
 }

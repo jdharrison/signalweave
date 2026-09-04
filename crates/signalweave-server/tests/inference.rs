@@ -1,25 +1,20 @@
 //! Inference plane coverage: an AI conversation round-trip, a read-only tool call, and
 //! rejection of a deliberately stale state-changing tool proposal.
 //!
-//! Disabling the plane leaving relay tests unchanged is proven by `tests/websocket.rs`
-//! continuing to pass unmodified: it exercises `development_router()`, which never enables
-//! inference (`ServerConfig::inference_enabled` defaults to `false`).
+//! Disabling the plane leaving relay tests unchanged is proven by `tests/quic.rs`
+//! continuing to pass unmodified: it exercises `serve_dev_ephemeral(false)` with the
+//! inference plane disabled.
 
 use std::time::Duration;
 
 use signalweave_client_rust::{Client, ClientConfig};
 use signalweave_inference_test_provider::{TRIGGER_DIAGNOSTIC, TRIGGER_STALE_STATUS_UPDATE};
 use signalweave_protocol::{ControlPayload, MessagePayload, ToolCallRejectionCode};
-use signalweave_server::development_router_with_inference;
+use signalweave_server::serve_dev_ephemeral;
 
 async fn start_server_with_inference() -> (String, u64) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let (app, ai_entity) = development_router_with_inference().await.unwrap();
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
-    (format!("ws://{address}/ws"), ai_entity.get())
+    let urls = serve_dev_ephemeral(true).await.unwrap();
+    (urls.quic, urls.ai_entity.unwrap().get())
 }
 
 async fn connect_and_subscribe(url: String) -> Client {

@@ -3,7 +3,7 @@ name = "signalweave-server"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Signalweave HTTP control plane and WebSocket server"
+description = "Signalweave HTTP control plane and QUIC/WebTransport server"
 license.workspace = true
 repository.workspace = true
 publish = false
@@ -19,9 +19,7 @@ path = "src/main.rs"
 signalweave-core.workspace = true
 signalweave-protocol.workspace = true
 signalweave-transport.workspace = true
-signalweave-transport-websocket.workspace = true
 signalweave-transport-quic.workspace = true
-signalweave-transport-webtransport.workspace = true
 signalweave-inference-core.workspace = true
 signalweave-inference-tools.workspace = true
 signalweave-inference-test-provider.workspace = true
@@ -38,8 +36,6 @@ wtransport.workspace = true
 
 [dev-dependencies]
 signalweave-client-rust = { path = "../signalweave-client-rust" }
-tokio-tungstenite.workspace = true
-futures-util.workspace = true
 serde_json.workspace = true
 tower.workspace = true
 

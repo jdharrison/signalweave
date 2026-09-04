@@ -1,3 +1,0 @@
-flatbuffers==25.12.19
-pytest>=8
-websockets>=13

@@ -3,7 +3,7 @@ name = "signalweave-client-rust"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Reference Signalweave client used as the integration-test driver"
+description = "Reference Signalweave client used as the integration-test driver (QUIC/WebTransport)"
 license.workspace = true
 repository.workspace = true
 publish = false
@@ -13,10 +13,12 @@ path = "src/lib.rs"
 
 [dependencies]
 signalweave-protocol.workspace = true
+quinn.workspace = true
+rustls.workspace = true
+wtransport.workspace = true
 tokio.workspace = true
-tokio-tungstenite.workspace = true
-futures-util.workspace = true
 tracing.workspace = true
+url = "2"
 
 [lints]
 workspace = true

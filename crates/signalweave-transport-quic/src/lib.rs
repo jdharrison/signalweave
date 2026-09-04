@@ -1,10 +1,16 @@
-//! Native QUIC transport adapter.
+//! QUIC/WebTransport transport adapter.
+//!
+//! Native clients connect directly over QUIC; browser clients connect over WebTransport
+//! (HTTP/3 with QUIC underneath). Both share the same envelope codec, the same delivery-class
+//! mapping, and the same core worker bridge.
 //!
 //! Control envelopes and reliable data are carried on the first client-initiated bidirectional
 //! stream. `UnreliableSequenced` and `BestEffortEvent` delivery classes are mapped to QUIC
 //! unreliable datagrams when they fit within the connection's current datagram budget.
 
 #![deny(unsafe_code)]
+
+pub mod webtransport;
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
