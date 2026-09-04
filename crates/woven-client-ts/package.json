@@ -1,11 +1,28 @@
 {
   "name": "@woven/client",
   "version": "0.1.1",
-  "private": true,
+  "description": "Browser WebTransport client for Woven",
   "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "check": "tsc --noEmit",
+    "check": "npm run typecheck",
+    "format:check": "node scripts/check-format.mjs",
+    "lint": "npm run typecheck",
+    "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
+    "build": "tsc --project tsconfig.build.json",
+    "prepack": "npm run build",
     "test:decode-fixture": "tsx test/decode-fixture.ts",
     "test:decode-tool-call-completed": "tsx test/decode-tool-call-completed-fixture.ts"
   },

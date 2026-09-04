@@ -6,7 +6,6 @@ rust-version.workspace = true
 description = "QUIC/WebTransport adapter for Woven"
 license.workspace = true
 repository.workspace = true
-publish = false
 
 [lib]
 path = "src/lib.rs"

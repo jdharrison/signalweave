@@ -24,8 +24,9 @@
 .env.*
 !.env.example
 
-# JavaScript and generated coverage
+# JavaScript build output and generated coverage
 node_modules/
+dist/
 coverage/
 
 # .NET / C#

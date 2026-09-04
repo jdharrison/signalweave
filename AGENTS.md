@@ -52,7 +52,7 @@ woven/
     ├── woven-inference-tools         ← bounded tool registry, deterministic tool-call gateway
     ├── woven-inference-test-provider ← deterministic scripted provider for tests/dev
     ├── woven-inference-coordinator   ← runs an AI identity as an ordinary core connection
-    ├── woven-client-rust             ← native reference client, integration-test driver
+    ├── woven-client-rust             ← `woven-client` native library, integration-test driver
     ├── woven-client-ts               ← generated TS bindings + real WebTransport browser client (codec, encode, mock-tested)
     └── woven-loadtest                ← bounded local routing scenarios and measurement
 ```

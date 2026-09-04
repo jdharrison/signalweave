@@ -10,7 +10,7 @@
 use std::time::Duration;
 
 use tokio::time::timeout;
-use woven_client_rust::{Client, ClientConfig};
+use woven_client::{Client, ClientConfig};
 use woven_protocol::{Codec, MessagePayload};
 use woven_server::serve_dev_ephemeral;
 

@@ -54,9 +54,9 @@ provider (`woven-inference-test-provider`) exercises the full path — an AI
 conversation, a read-only tool call, and rejection of a stale state-changing proposal —
 with no paid service required.
 
-**Reference clients** — a native Rust client (`woven-client-rust`) used as the
+**Reference clients** — the native Rust library (`woven-client`) used as the
 integration-test driver, selecting QUIC or WebTransport automatically from the connection
-URL scheme; and a TypeScript WebTransport browser client (`woven-client-ts`) that
+URL scheme; and the TypeScript WebTransport browser package (`@woven/client`) that
 mirrors the Rust client API over the WHATWG `WebTransport` transport, with encode/decode
 tests and a mock-transport client test. The Rust and TypeScript encoders are proven
 wire-compatible in both directions against the same checked-in golden fixtures, closing the

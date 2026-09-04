@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use woven_client_rust::{Client, ClientConfig};
+use woven_client::{Client, ClientConfig};
 use woven_inference_test_provider::{TRIGGER_DIAGNOSTIC, TRIGGER_STALE_STATUS_UPDATE};
 use woven_protocol::{ControlPayload, MessagePayload, ToolCallRejectionCode};
 use woven_server::serve_dev_ephemeral;

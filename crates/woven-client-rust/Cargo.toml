@@ -1,12 +1,14 @@
 [package]
-name = "woven-client-rust"
+name = "woven-client"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Reference Woven client used as the integration-test driver (QUIC/WebTransport)"
+description = "Native QUIC and WebTransport client for Woven"
 license.workspace = true
 repository.workspace = true
-publish = false
+readme = "README.md"
+keywords = ["realtime", "quic", "webtransport"]
+categories = ["network-programming"]
 
 [lib]
 path = "src/lib.rs"

@@ -10,7 +10,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
-use woven_client_rust::{Client, ClientConfig, ClientError};
+use woven_client::{Client, ClientConfig, ClientError};
 use woven_protocol::{ControlPayload, MessagePayload, ProtocolErrorCode};
 use woven_server::serve_dev_ephemeral;
 

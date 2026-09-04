@@ -6,7 +6,6 @@ rust-version.workspace = true
 description = "Transport-independent Woven worker and protocol bridge"
 license.workspace = true
 repository.workspace = true
-publish = false
 
 [lib]
 path = "src/lib.rs"

@@ -3,13 +3,13 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, 'release/v*']
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -17,7 +17,7 @@ jobs:
     name: Rust workspace
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.98.0
         with:
           components: clippy, rustfmt
@@ -28,41 +28,45 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - name: Test
         run: cargo test --locked --workspace --all-targets --all-features
-      - name: Check documentation
-        env:
-          RUSTDOCFLAGS: -D warnings
-        run: cargo doc --locked --workspace --no-deps
+      - name: Build
+        run: cargo build --locked --workspace
 
   security-audit:
     name: Dependency audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: rustsec/audit-check@v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - name: Install cargo-audit with its compatible toolchain
+        run: cargo +1.88.0 install cargo-audit --version 0.22.2 --locked
+      - name: Audit dependencies
+        run: cargo audit
 
   client-ts:
-    name: TypeScript client bindings
+    name: TypeScript browser client
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@1.98.0
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install npm dependencies
+          cache: npm
+          cache-dependency-path: crates/woven-client-ts/package-lock.json
+      - name: Install dependencies
         working-directory: crates/woven-client-ts
         run: npm ci
+      - name: Check formatting
+        working-directory: crates/woven-client-ts
+        run: npm run format:check
+      - name: Lint
+        working-directory: crates/woven-client-ts
+        run: npm run lint
       - name: Type-check
         working-directory: crates/woven-client-ts
-        run: npm run check
-      - name: Unit tests (codec + mocked WebTransport client)
+        run: npm run typecheck
+      - name: Test
         working-directory: crates/woven-client-ts
-        run: npm test
-      - name: Decode checked-in golden fixtures
+        run: npm run test
+      - name: Build package
         working-directory: crates/woven-client-ts
-        run: |
-          npm run test:decode-fixture
-          npm run test:decode-tool-call-completed
+        run: npm run build

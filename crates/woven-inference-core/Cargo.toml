@@ -6,7 +6,6 @@ rust-version.workspace = true
 description = "Inference capability, request, and provider data model, isolated from woven-core"
 license.workspace = true
 repository.workspace = true
-publish = false
 
 [lib]
 path = "src/lib.rs"

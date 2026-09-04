@@ -3,10 +3,12 @@ name = "woven-server"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Woven HTTP control plane and QUIC/WebTransport server"
+description = "Self-hosted QUIC and WebTransport realtime server for Woven"
 license.workspace = true
 repository.workspace = true
-publish = false
+readme = "README.md"
+keywords = ["realtime", "quic", "webtransport"]
+categories = ["network-programming"]
 
 [lib]
 path = "src/lib.rs"
@@ -35,7 +37,7 @@ quinn.workspace = true
 wtransport.workspace = true
 
 [dev-dependencies]
-woven-client-rust = { path = "../woven-client-rust" }
+woven-client = { path = "../woven-client-rust", version = "=0.1.1" }
 serde_json.workspace = true
 tower.workspace = true
 

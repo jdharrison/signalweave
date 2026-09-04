@@ -6,7 +6,6 @@ rust-version.workspace = true
 description = "Transport-neutral FlatBuffers protocol and bounded framing for Woven"
 license.workspace = true
 repository.workspace = true
-publish = false
 build = "build.rs"
 
 [lib]

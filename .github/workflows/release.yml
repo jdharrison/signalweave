@@ -1,136 +1,306 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - 'release/v*'
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag, for example v0.1.1 or v0.1.1-alpha.1
+        required: true
+        type: string
+      confirm:
+        description: Type publish to confirm registry publication and release asset upload
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  validate-and-release:
-    name: Validate, build bundles and publish release
+  prepare:
+    name: Verify release tag and versions
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Resolve requested tag
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$CONFIRM" != "publish" ]; then
+            echo "Manual releases require confirm=publish." >&2
+            exit 1
+          fi
+          TAG="${RELEASE_TAG:-$INPUT_TAG}"
+          if ! printf '%s' "$TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+            echo "Release tag must be valid SemVer in vX.Y.Z form: $TAG" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+  validate:
+    name: Validate release contents
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Extract version from branch name
-        id: meta
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+          fetch-depth: 0
+      - name: Confirm exact tag checkout
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: |
-          VERSION=${GITHUB_REF_NAME#release/v}
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-
-      # ── Toolchain setup ────────────────────────────────────────────────────
+          test "$(git describe --exact-match --tags HEAD)" = "$TAG"
       - uses: dtolnay/rust-toolchain@1.98.0
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
-
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
           node-version: "22"
-
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: "10.0.x"
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      # ── Rust workspace validation ──────────────────────────────────────────
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Lint
-        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-
-      - name: Test Rust workspace
-        run: cargo test --locked --workspace --all-targets --all-features
-
-      - name: Check documentation
+          cache: npm
+          cache-dependency-path: crates/woven-client-ts/package-lock.json
+      - name: Verify coordinated package versions
         env:
-          RUSTDOCFLAGS: -D warnings
-        run: cargo doc --locked --workspace --no-deps
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          cargo metadata --no-deps --format-version 1 > metadata.json
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
 
-      - name: Audit dependencies
-        uses: rustsec/audit-check@v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      # ── Client validation ──────────────────────────────────────────────────
-      - name: Build server (debug, for live client tests)
-        run: cargo build -p woven-server
-
-      - name: Validate TypeScript client
+          version = os.environ["VERSION"]
+          published = {
+              "woven-core",
+              "woven-protocol",
+              "woven-transport",
+              "woven-transport-quic",
+              "woven-inference-core",
+              "woven-inference-tools",
+              "woven-inference-test-provider",
+              "woven-inference-coordinator",
+              "woven-client",
+              "woven-server",
+          }
+          packages = {package["name"]: package["version"] for package in json.load(open("metadata.json"))["packages"]}
+          mismatches = [name for name in sorted(published) if packages.get(name) != version]
+          if mismatches:
+              for name in mismatches:
+                  print(f"{name}: expected {version}, found {packages.get(name)!r}", file=sys.stderr)
+              sys.exit(1)
+          PY
+          node --input-type=module -e 'import packageJson from "./crates/woven-client-ts/package.json" with { type: "json" }; if (packageJson.version !== process.env.VERSION) { throw new Error(`@woven/client: expected ${process.env.VERSION}, found ${packageJson.version}`); }'
+      - name: Install TypeScript dependencies
+        working-directory: crates/woven-client-ts
+        run: npm ci
+      - name: Validate Rust workspace
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+          cargo test --locked --workspace --all-targets --all-features
+          cargo build --locked --workspace
+      - name: Validate TypeScript package
         working-directory: crates/woven-client-ts
         run: |
-          npm ci
-          npm run check
-          npm run test:decode-fixture
-          npm run test:decode-tool-call-completed
-          npm run test:decode
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm run test
+          npm run build
 
-      - name: Validate C# client
-        working-directory: crates/woven-client-csharp/test
-        run: dotnet test
+  security-audit:
+    name: Audit release dependencies
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - name: Install cargo-audit with its compatible toolchain
+        run: cargo +1.88.0 install cargo-audit --version 0.22.2 --locked
+      - name: Audit dependencies
+        run: cargo audit
 
-      - name: Validate Python client
-        working-directory: crates/woven-client-python/test
-        run: |
-          pip install -r requirements.txt
-          pytest
-
-      # ── Build server release binary ────────────────────────────────────────
-      - name: Build server release binary
-        run: cargo build -p woven-server --release
-
-      # ── Create release bundles ─────────────────────────────────────────────
-      - name: Create release bundles
-        run: |
-          mkdir -p dist
-          VERSION="${{ steps.meta.outputs.version }}"
-
-          # Server binary (Linux x64)
-          cp target/release/woven-server "dist/woven-server-${VERSION}-linux-x64"
-          tar -czf "dist/woven-server-${VERSION}-linux-x64.tar.gz" \
-            -C dist "woven-server-${VERSION}-linux-x64"
-          rm "dist/woven-server-${VERSION}-linux-x64"
-
-          # Rust client source crate
-          tar -czf "dist/woven-client-rust-${VERSION}.tar.gz" \
-            crates/woven-client-rust
-
-          # TypeScript client bindings
-          tar -czf "dist/woven-client-ts-${VERSION}.tar.gz" \
-            -C crates/woven-client-ts \
-            package.json tsconfig.json generated/
-
-          # C# client bindings
-          zip -r "dist/woven-client-csharp-${VERSION}.zip" \
-            crates/woven-client-csharp \
-            -x "*/bin/*" -x "*/obj/*"
-
-          # Python client bindings
-          tar -czf "dist/woven-client-python-${VERSION}.tar.gz" \
-            --exclude='__pycache__' --exclude='*.pyc' \
-            crates/woven-client-python
-
-      # ── Publish GitHub Release ─────────────────────────────────────────────
-      - name: Create or update GitHub Release
+  publish:
+    name: Publish crates.io and npm packages
+    needs: [prepare, validate, security-audit]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: crates/woven-client-ts/package-lock.json
+      - name: Refuse existing registry versions
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          gh release create "${TAG}" \
-            --title "${TAG}" \
-            --generate-notes \
-            --target "${GITHUB_SHA}" \
-            || true
-          gh release upload "${TAG}" --clobber dist/*
+          for package in woven-core woven-protocol woven-transport woven-transport-quic woven-inference-core woven-inference-tools woven-inference-test-provider woven-inference-coordinator woven-client woven-server; do
+            if curl --fail --silent --show-error "https://crates.io/api/v1/crates/$package/$VERSION" >/dev/null; then
+              echo "crates.io already contains $package $VERSION; releases are immutable." >&2
+              exit 1
+            fi
+          done
+          if npm view "@woven/client@$VERSION" version >/dev/null 2>&1; then
+            echo "npm already contains @woven/client@$VERSION; releases are immutable." >&2
+            exit 1
+          fi
+      - name: Publish Rust crates in dependency order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          test -n "$CARGO_REGISTRY_TOKEN" || { echo "CARGO_REGISTRY_TOKEN is required for crates.io publication." >&2; exit 1; }
+          publish() {
+            package="$1"
+            for attempt in 1 2 3 4 5; do
+              if cargo publish --locked -p "$package"; then
+                return 0
+              fi
+              if [ "$attempt" = 5 ]; then
+                echo "Failed to publish $package after $attempt attempts." >&2
+                return 1
+              fi
+              echo "Waiting for crates.io index propagation before retrying $package." >&2
+              sleep 30
+            done
+          }
+          publish woven-core
+          publish woven-protocol
+          publish woven-inference-core
+          publish woven-transport
+          publish woven-inference-tools
+          publish woven-inference-test-provider
+          publish woven-transport-quic
+          publish woven-inference-coordinator
+          publish woven-client
+          publish woven-server
+      - name: Publish TypeScript browser client
+        working-directory: crates/woven-client-ts
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm ci
+          npm run build
+          npm publish --provenance
+
+  binaries:
+    name: Build ${{ matrix.target }} server binary
+    needs: [prepare, validate, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            archive: woven-server-v${{ needs.prepare.outputs.version }}-x86_64-unknown-linux-musl.tar.gz
+            binary: woven-server
+            format: tar.gz
+          - os: macos-14
+            target: aarch64-apple-darwin
+            archive: woven-server-v${{ needs.prepare.outputs.version }}-aarch64-apple-darwin.tar.gz
+            binary: woven-server
+            format: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive: woven-server-v${{ needs.prepare.outputs.version }}-x86_64-apple-darwin.tar.gz
+            binary: woven-server
+            format: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: woven-server-v${{ needs.prepare.outputs.version }}-x86_64-pc-windows-msvc.zip
+            binary: woven-server.exe
+            format: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build server
+        run: cargo build --locked --release --target ${{ matrix.target }} -p woven-server
+      - name: Package Unix archive
+        if: matrix.format == 'tar.gz'
+        env:
+          ARCHIVE: ${{ matrix.archive }}
+          BINARY: ${{ matrix.binary }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p release/woven-server
+          cp "target/$TARGET/release/$BINARY" release/woven-server/
+          cp LICENSE release/woven-server/
+          cp README.md release/woven-server/README.md
+          tar -czf "$ARCHIVE" -C release woven-server
+      - name: Package Windows archive
+        if: matrix.format == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release/woven-server | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" release/woven-server/
+          Copy-Item LICENSE release/woven-server/
+          Copy-Item README.md release/woven-server/README.md
+          Compress-Archive -Path release/woven-server -DestinationPath ${{ matrix.archive }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ matrix.archive }}
+          if-no-files-found: error
+
+  release-assets:
+    name: Upload release assets
+    needs: [prepare, publish, binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: release-assets
+        run: sha256sum woven-server-* > woven-server-v${{ needs.prepare.outputs.version }}-checksums.txt
+      - name: Create the release for manual dispatch when needed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --generate-notes --target "$GITHUB_SHA"
+      - name: Upload binaries and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release upload "$TAG" --clobber release-assets/*

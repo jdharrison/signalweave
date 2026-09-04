@@ -146,8 +146,8 @@ Initialize a Rust workspace with focused crates. Adjust exact boundaries only wh
 - `woven-transport-websocket`: universal binary WebSocket adapter.
 - `woven-transport-quic`: native QUIC adapter using Quinn.
 - `woven-transport-webtransport`: browser WebTransport adapter.
-- `woven-client-rust`: reference native client.
-- `woven-client-ts`: generated protocol and browser reference client.
+- `woven-client`: reference native client library.
+- `@woven/client`: browser reference client package.
 - `woven-client-csharp`: generated protocol and Unity-compatible reference client.
 - `woven-inference-core`: inference capabilities, requests, routing policy, deadlines, budgets, cancellation, and streaming results.
 - `woven-inference-coordinator`: context assembly, provider selection, scheduling, and response delivery.

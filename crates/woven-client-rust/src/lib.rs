@@ -378,8 +378,8 @@ impl Client {
                 message: MessagePayload::Control(ControlPayload::Hello(Hello {
                     min_protocol_version: 1,
                     max_protocol_version: 1,
-                    client_name: "woven-client-rust".to_owned(),
-                    client_version: "0.1.0".to_owned(),
+                    client_name: "woven-client".to_owned(),
+                    client_version: env!("CARGO_PKG_VERSION").to_owned(),
                     capability_bits: 0,
                     max_frame_size: config.max_frame_bytes,
                     max_payload_size: config.max_payload_bytes,

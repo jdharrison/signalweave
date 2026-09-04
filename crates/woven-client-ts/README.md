@@ -1,7 +1,7 @@
 # Woven TypeScript client (WebTransport)
 
 The browser client for Woven, generated FlatBuffers bindings plus a real
-`WebTransport` transport client that mirrors the reference `woven-client-rust`
+`WebTransport` transport client that mirrors the native Rust `woven-client`
 API. Per ADR 0014, browsers connect over **WebTransport** (QUIC over HTTPS/HTTP-3),
 so this is the full native client path for web runtimes — not just a codec.
 
@@ -25,8 +25,12 @@ The encoder is validated for wire compatibility in both directions:
 
 ## Using the client (browser)
 
+```sh
+npm install @woven/client
+```
+
 ```ts
-import { WovenClient } from "./src/index.js";
+import { WovenClient } from "@woven/client";
 
 const client = await WovenClient.connect({
   url: "quic://host:4433",
@@ -65,7 +69,7 @@ convention is a default that deployments can override.
 
 ## API surface
 
-`WovenClient` mirrors `woven-client-rust`:
+`WovenClient` mirrors `woven-client`:
 
 - `connect(config)` / `fromTransport(transport, stream, config)`
 - `joinSession(namespaceId, sessionId)`
@@ -86,8 +90,11 @@ delivery class, scoping IDs, payload, and the typed control payload when present
 ```sh
 cd crates/woven-client-ts
 npm ci
-npm run check     # tsc --noEmit
+npm run format:check
+npm run lint
+npm run typecheck
 npm test          # unit tests (codec + mocked WebTransport client)
+npm run build
 npm run test:decode-fixture
 npm run test:decode-tool-call-completed
 ```
