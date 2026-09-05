@@ -69,7 +69,7 @@ async fn main() -> ExitCode {
     }
 }
 
-const fn activity_logging_supported(mode: ActivityLogMode) -> bool {
+fn activity_logging_supported(mode: ActivityLogMode) -> bool {
     #[cfg(debug_assertions)]
     {
         let _ = mode;
