@@ -68,6 +68,9 @@ struct AppState {
     webtransport_enabled: bool,
     webtransport_endpoint: Option<String>,
     inference_enabled: bool,
+    worker: WorkerHandle,
+    max_connections: usize,
+    max_sessions: usize,
 }
 
 /// Build the HTTP/health/capabilities router with the given transport capabilities reported.
@@ -82,12 +85,17 @@ fn router_with_transports(
     webtransport_enabled: bool,
     webtransport_endpoint: Option<String>,
     inference_enabled: bool,
+    worker: WorkerHandle,
 ) -> Router {
+    let default_core_config = CoreConfig::default();
     let state = Arc::new(AppState {
         quic_enabled,
         webtransport_enabled,
         webtransport_endpoint,
         inference_enabled,
+        worker,
+        max_connections: default_core_config.max_connections,
+        max_sessions: default_core_config.max_sessions,
     });
     Router::new()
         .route("/healthz", get(health))
@@ -138,6 +146,7 @@ pub async fn serve(config: ServerConfig) -> Result<(), ServerError> {
             true,
             Some(format!("{webtransport_port}{webtransport_path}")),
             inference_sink.is_some(),
+            worker,
         ),
     )
     .await?;
@@ -217,7 +226,7 @@ pub async fn serve_dev_ephemeral(inference_enabled: bool) -> Result<DevServeUrls
 
     let webtransport = development_webtransport_endpoint(SocketAddr::from(([127, 0, 0, 1], 0)))?;
     let webtransport_address = webtransport.local_addr()?;
-    let mut webtransport_config = WebTransportConfig::new(worker);
+    let mut webtransport_config = WebTransportConfig::new(worker.clone());
     webtransport_config.path = Arc::from("/webtransport");
     webtransport_config.inference_sink = inference_sink.clone();
     tokio::spawn(serve_webtransport_endpoint(
@@ -236,6 +245,7 @@ pub async fn serve_dev_ephemeral(inference_enabled: bool) -> Result<DevServeUrls
                 true,
                 Some(format!("{webtransport_port}/webtransport")),
                 inference_sink.is_some(),
+                worker,
             ),
         )
         .await;
@@ -389,8 +399,115 @@ async fn ready(State(state): State<Arc<AppState>>) -> StatusCode {
         StatusCode::SERVICE_UNAVAILABLE
     }
 }
-async fn metrics() -> &'static str {
-    "# Woven metrics placeholder\n"
+/// Prometheus text-exposition metrics for capacity/cost observability. Cheap: live
+/// connection/session counts are read directly from core state and the rest are relaxed
+/// atomic counters maintained on the hot path regardless of build profile — unlike the
+/// debug-only activity log, this is meant to run in production.
+async fn metrics(State(state): State<Arc<AppState>>) -> String {
+    let live = state.worker.live_counts().await.unwrap_or_default();
+    let counters = state.worker.metrics().snapshot();
+    let mut body = String::new();
+
+    write_gauge(
+        &mut body,
+        "woven_connections_active",
+        "Currently connected clients.",
+        live.connections_active as u64,
+    );
+    write_gauge(
+        &mut body,
+        "woven_connections_max",
+        "Configured maximum concurrent connections.",
+        state.max_connections as u64,
+    );
+    write_gauge(
+        &mut body,
+        "woven_sessions_active",
+        "Currently provisioned sessions.",
+        live.sessions_active as u64,
+    );
+    write_gauge(
+        &mut body,
+        "woven_sessions_max",
+        "Configured maximum concurrent sessions.",
+        state.max_sessions as u64,
+    );
+    write_counter(
+        &mut body,
+        "woven_connections_total",
+        "Connections accepted since process start.",
+        counters.connections_total,
+    );
+    write_counter(
+        &mut body,
+        "woven_authenticate_rejected_total",
+        "Authentication attempts rejected since process start.",
+        counters.authenticate_rejected_total,
+    );
+    write_counter(
+        &mut body,
+        "woven_join_rejected_total",
+        "Session join attempts rejected since process start.",
+        counters.join_rejected_total,
+    );
+    write_counter(
+        &mut body,
+        "woven_publishes_total",
+        "Publish commands processed since process start.",
+        counters.publishes_total,
+    );
+    write_counter(
+        &mut body,
+        "woven_transform_publishes_total",
+        "Of woven_publishes_total, those carrying an entity transform.",
+        counters.transform_publishes_total,
+    );
+    write_counter(
+        &mut body,
+        "woven_publish_bytes_received_total",
+        "Publish payload bytes received since process start.",
+        counters.publish_bytes_received_total,
+    );
+    write_counter(
+        &mut body,
+        "woven_publish_bytes_delivered_total",
+        "Publish payload bytes fanned out to recipients since process start.",
+        counters.publish_bytes_delivered_total,
+    );
+    write_counter(
+        &mut body,
+        "woven_events_delivered_total",
+        "Recipient delivery attempts since process start.",
+        counters.events_delivered_total,
+    );
+    write_counter(
+        &mut body,
+        "woven_queue_dropped_total",
+        "Outbound messages dropped for capacity since process start.",
+        counters.queue_dropped_total,
+    );
+    write_counter(
+        &mut body,
+        "woven_queue_evicted_total",
+        "Outbound messages evicted or coalesced since process start.",
+        counters.queue_evicted_total,
+    );
+
+    body
+}
+
+fn write_gauge(body: &mut String, name: &str, help: &str, value: u64) {
+    use std::fmt::Write;
+    let _ = writeln!(body, "# HELP {name} {help}");
+    let _ = writeln!(body, "# TYPE {name} gauge");
+    let _ = writeln!(body, "{name} {value}");
+}
+
+fn write_counter(body: &mut String, name: &str, help: &str, value: u64) {
+    use std::fmt::Write;
+    let _ = writeln!(body, "# HELP {name} {help}");
+    let _ = writeln!(body, "# TYPE {name} counter");
+    let _ = writeln!(body, "{name} {value}");
 }
 
 #[derive(Serialize)]
@@ -538,12 +655,26 @@ mod tests {
         http::{Request, StatusCode},
     };
     use tower::ServiceExt;
+    use woven_core::TransportIndependentWorker;
+    use woven_transport::spawn_worker;
 
-    use super::router_with_transports;
+    use super::{development_core, router_with_transports};
+
+    fn test_worker() -> woven_transport::WorkerHandle {
+        spawn_worker(TransportIndependentWorker::new(
+            development_core().expect("development core"),
+        ))
+    }
 
     #[tokio::test]
     async fn health_reports_active_and_disabled_layers() {
-        let app = router_with_transports(true, true, Some("8082/webtransport".to_owned()), false);
+        let app = router_with_transports(
+            true,
+            true,
+            Some("8082/webtransport".to_owned()),
+            false,
+            test_worker(),
+        );
         let response = app
             .oneshot(
                 Request::builder()
@@ -571,7 +702,7 @@ mod tests {
 
     #[tokio::test]
     async fn readiness_is_unavailable_without_quic() {
-        let app = router_with_transports(false, false, None, false);
+        let app = router_with_transports(false, false, None, false, test_worker());
         let health = app
             .clone()
             .oneshot(

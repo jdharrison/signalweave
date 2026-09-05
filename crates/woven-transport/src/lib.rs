@@ -2,7 +2,10 @@
 
 #![deny(unsafe_code)]
 
+mod metrics;
+
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use woven_core::{
     Authenticator, CleanupSummary, CoalesceKey, Command, CommandResult, ConnectionId, CoreError,
@@ -13,6 +16,8 @@ use woven_protocol::{
     ControlPayload, DeliveryClass, EntityEntered, EntityLeaveReason, EntityLeft, Envelope,
     MessageKind, MessagePayload, OpaquePayload, PROTOCOL_VERSION, ProtocolError, ProtocolErrorCode,
 };
+
+pub use metrics::{LiveCounts, ServerMetrics, ServerMetricsSnapshot};
 /// Maximum number of commands pending for the single core owner.
 pub const COMMAND_CAPACITY: usize = 256;
 /// Maximum protocol frame size advertised by the transport bridge.
@@ -74,6 +79,9 @@ enum WorkerRequest {
         envelope: Envelope,
         reply: oneshot::Sender<Result<(), TransportError>>,
     },
+    LiveCounts {
+        reply: oneshot::Sender<LiveCounts>,
+    },
 }
 
 struct LifecycleRecipient {
@@ -120,9 +128,25 @@ pub struct UnroutedControl {
 #[derive(Clone)]
 pub struct WorkerHandle {
     sender: mpsc::Sender<WorkerRequest>,
+    metrics: Arc<ServerMetrics>,
 }
 
 impl WorkerHandle {
+    /// Always-on cumulative counters for capacity and cost observability.
+    #[must_use]
+    pub fn metrics(&self) -> &ServerMetrics {
+        &self.metrics
+    }
+
+    /// Live connection/session counts read directly from core state, not accumulated.
+    pub async fn live_counts(&self) -> Result<LiveCounts, TransportError> {
+        let (reply, receive) = oneshot::channel();
+        self.sender
+            .send(WorkerRequest::LiveCounts { reply })
+            .await
+            .map_err(|_| TransportError::WorkerUnavailable)?;
+        receive.await.map_err(|_| TransportError::WorkerUnavailable)
+    }
     /// Submit a command to the single owner and wait for its result.
     pub async fn execute(&self, command: Command) -> Result<CommandResult, TransportError> {
         let (reply, receive) = oneshot::channel();
@@ -248,6 +272,8 @@ pub fn spawn_worker<A>(worker: TransportIndependentWorker<A>) -> WorkerHandle
 where
     A: Authenticator + Send + 'static,
 {
+    let metrics = Arc::new(ServerMetrics::default());
+    let worker_metrics = Arc::clone(&metrics);
     let (sender, mut receiver) = mpsc::channel::<WorkerRequest>(COMMAND_CAPACITY);
     tokio::spawn(async move {
         let mut worker = worker;
@@ -259,9 +285,11 @@ where
                     #[cfg(debug_assertions)]
                     let activity = log_development_activity(&command);
                     let action = lifecycle_action(&command);
+                    let context = metrics_context(&command);
                     let result = worker.handle(command);
                     #[cfg(debug_assertions)]
                     log_development_result(activity, &result);
+                    record_metrics(&worker_metrics, context, &result);
                     if let Ok(result) = &result {
                         apply_lifecycle_action(
                             &mut worker,
@@ -272,6 +300,12 @@ where
                         );
                     }
                     let _ = reply.send(result);
+                }
+                WorkerRequest::LiveCounts { reply } => {
+                    let _ = reply.send(LiveCounts {
+                        connections_active: worker.core().connection_count(),
+                        sessions_active: worker.core().session_count(),
+                    });
                 }
                 WorkerRequest::RegisterLifecycle {
                     connection,
@@ -393,7 +427,7 @@ where
             }
         }
     });
-    WorkerHandle { sender }
+    WorkerHandle { sender, metrics }
 }
 
 #[cfg(debug_assertions)]
@@ -583,9 +617,83 @@ fn log_development_activity(command: &Command) -> &'static str {
     }
 }
 
-#[cfg(debug_assertions)]
 fn is_transform_publication(request: &PublishRequest) -> bool {
     request.entity.is_some() && matches!(request.delivery, CoreDelivery::LatestValue)
+}
+
+/// What (if anything) the always-on metrics counters need to know about a command before
+/// it's consumed by `worker.handle`, and, for publishes, after its outcome comes back.
+#[derive(Clone, Copy)]
+enum MetricsContext {
+    None,
+    Connected,
+    Authenticate,
+    Join,
+    Publish {
+        payload_bytes: u64,
+        is_transform: bool,
+    },
+}
+
+fn metrics_context(command: &Command) -> MetricsContext {
+    match command {
+        Command::TransportConnected => MetricsContext::Connected,
+        Command::Authenticate { .. } => MetricsContext::Authenticate,
+        Command::JoinSession { .. } | Command::JoinSessionWithAdmission { .. } => {
+            MetricsContext::Join
+        }
+        Command::Publish(request) => MetricsContext::Publish {
+            payload_bytes: request.payload.len() as u64,
+            is_transform: is_transform_publication(request),
+        },
+        _ => MetricsContext::None,
+    }
+}
+
+fn record_metrics(
+    metrics: &ServerMetrics,
+    context: MetricsContext,
+    result: &Result<CommandResult, CoreError>,
+) {
+    match context {
+        MetricsContext::None => {}
+        MetricsContext::Connected => {
+            if result.is_ok() {
+                metrics.record_connected();
+            }
+        }
+        MetricsContext::Authenticate => {
+            if result.is_err() {
+                metrics.record_authenticate_rejected();
+            }
+        }
+        MetricsContext::Join => {
+            if result.is_err() {
+                metrics.record_join_rejected();
+            }
+        }
+        MetricsContext::Publish {
+            payload_bytes,
+            is_transform,
+        } => {
+            metrics.record_publish(payload_bytes, is_transform);
+            if let Ok(CommandResult::Published(outcome)) = result {
+                let dropped = (outcome.queues.dropped_latest
+                    + outcome.queues.dropped_best_effort
+                    + outcome.queues.critical_capacity_exhausted)
+                    as u64;
+                let evicted = (outcome.queues.critical_evictions
+                    + outcome.queues.evicted_latest
+                    + outcome.queues.replaced_latest) as u64;
+                metrics.record_publish_outcome(
+                    payload_bytes,
+                    outcome.recipient_attempts as u64,
+                    dropped,
+                    evicted,
+                );
+            }
+        }
+    }
 }
 
 #[cfg(debug_assertions)]

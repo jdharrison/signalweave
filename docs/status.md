@@ -23,7 +23,9 @@ compiler, verifier-backed bounded decoding, semantic validation, and checked-in 
 fixtures proving byte-for-byte cross-language stability.
 
 **Realtime transports** — an Axum control plane (`woven-server`) exposing
-`/healthz`, `/readyz`, `/metrics`, and `/v1/capabilities`; a bounded single-owner Tokio
+`/healthz`, `/readyz`, `/v1/capabilities`, and `/metrics` (Prometheus text: live
+connection/session counts plus cumulative publish/delivery/byte/rejection/backpressure
+counters — always-on, not gated behind debug builds); a bounded single-owner Tokio
 worker and protocol bridge shared by every adapter (`woven-transport`); native QUIC
 and (in the same `woven-transport-quic` crate) browser WebTransport, both mapping
 unreliable/best-effort delivery to datagrams under a conservative packet budget. Binary
