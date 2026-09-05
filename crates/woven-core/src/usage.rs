@@ -568,7 +568,7 @@ impl<S: UsageSink + Send + Sync> UsageSink for SpoolingUsageSink<S> {
     type AppendFuture<'a>
         = std::pin::Pin<Box<dyn Future<Output = Result<(), UsageSinkError>> + Send + 'a>>
     where
-        S: 'a;
+        Self: 'a;
 
     fn append(&self, window: UsageWindow) -> Self::AppendFuture<'_> {
         Box::pin(async move {

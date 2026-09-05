@@ -41,8 +41,11 @@ npm install @signalweave/woven-client
 ## Local development
 
 ```sh
+sh scripts/local/doctor.sh
+sh scripts/local/run-dev.sh
+sh scripts/local/loadtest.sh --scenario grid2d --participants 500 --rounds 100
+
 cargo test --workspace --all-targets --all-features
-cargo run -p woven-server
 
 cd crates/woven-client-ts
 npm ci
@@ -53,9 +56,25 @@ npm run test
 npm run build
 ```
 
-The server listens on `127.0.0.1:8080` (HTTP control plane), `127.0.0.1:8081` (QUIC), and
-`127.0.0.1:8082` (WebTransport), using an ephemeral self-signed development certificate for
-the two UDP-based transports.
+`run-dev.sh` starts the development-only composition on `127.0.0.1:8080` (HTTP control plane),
+`127.0.0.1:8081` (QUIC), and `127.0.0.1:8082` (WebTransport). It uses the static `dev-token` and
+an ephemeral self-signed certificate for the UDP-based transports. It is deliberately loopback-only
+and must not be exposed to a network or used with real credentials.
+
+`loadtest.sh` runs a release-mode, direct-core routing benchmark. It exercises routing and bounded
+outbound queues, but does not measure QUIC, WebTransport, TLS, sockets, or the shared transport-worker
+command queue. End-to-end transport stress testing is a separate harness and operational milestone.
+
+Development activity logging is off by default so local measurements stay representative. Enable safe,
+metadata-only CLI diagnostics explicitly when investigating a problem:
+
+```sh
+sh scripts/local/run-dev.sh --log-transform
+sh scripts/local/run-dev.sh --log-all
+```
+
+`--log-transform` reports entity position and entity-scoped latest-state publications. `--log-all` reports
+all development activity. Both options work only in debug builds; release binaries omit activity logging.
 
 Common commands:
 
@@ -116,7 +135,7 @@ Cloud deployment and engine distributions are intentionally not part of this pip
 
 ## Development configuration
 
-The development server composition explicitly provisions namespace/session `1`, logical spaces `1` and `2`, reliable and latest-value channels, and the development token `dev-token`. When the inference plane is enabled, it also provisions one demo AI identity with its own dev token, entity, and status channel; see [`crates/woven-inference-coordinator`](crates/woven-inference-coordinator).
+The development server composition explicitly provisions namespace/session `1`, logical spaces `1` and `2`, reliable and latest-value channels, and the development token `dev-token`. This composition exists solely for local development and test automation; it is not a production authentication or TLS configuration. When the inference plane is enabled, it also provisions one demo AI identity with its own dev token, entity, and status channel; see [`crates/woven-inference-coordinator`](crates/woven-inference-coordinator).
 
 [`.env.example`](.env.example) documents the non-secret `WOVEN_*` configuration contract for deployment-oriented runtime configuration, including `WOVEN_INFERENCE_ENABLED` (the inference plane is off by default). Development authentication must be selected explicitly; authentication is never silently disabled. TLS termination and production certificate configuration are deferred with deployment infrastructure.
 

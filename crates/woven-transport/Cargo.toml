@@ -14,6 +14,7 @@ path = "src/lib.rs"
 woven-core.workspace = true
 woven-protocol.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 
 [lints]
 workspace = true

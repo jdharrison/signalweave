@@ -108,11 +108,13 @@ pub async fn serve(config: ServerConfig) -> Result<(), ServerError> {
         None
     };
     let quic = development_quic_endpoint(config.quic_bind_address)?;
+    let quic_address = quic.local_addr()?;
     let mut quic_config = QuicConfig::new(worker.clone());
     quic_config.inference_sink = inference_sink.clone();
     tokio::spawn(serve_quic_endpoint(quic, quic_config));
     let webtransport = development_webtransport_endpoint(config.webtransport_bind_address)?;
-    let webtransport_port = webtransport.local_addr()?.port();
+    let webtransport_address = webtransport.local_addr()?;
+    let webtransport_port = webtransport_address.port();
     let webtransport_path = config.webtransport_path.clone();
     let mut webtransport_config = WebTransportConfig::new(worker.clone());
     webtransport_config.path = Arc::from(config.webtransport_path);
@@ -122,6 +124,13 @@ pub async fn serve(config: ServerConfig) -> Result<(), ServerError> {
         webtransport_config,
     ));
     let listener = tokio::net::TcpListener::bind(config.bind_address).await?;
+    let http_address = listener.local_addr()?;
+    print_development_startup(
+        http_address,
+        quic_address,
+        webtransport_address,
+        config.inference_enabled,
+    );
     axum::serve(
         listener,
         router_with_transports(
@@ -133,6 +142,44 @@ pub async fn serve(config: ServerConfig) -> Result<(), ServerError> {
     )
     .await?;
     Ok(())
+}
+
+fn print_development_startup(
+    http_address: SocketAddr,
+    quic_address: SocketAddr,
+    webtransport_address: SocketAddr,
+    inference_enabled: bool,
+) {
+    let inference = if inference_enabled {
+        "enabled"
+    } else {
+        "disabled"
+    };
+    let binding = if http_address.ip().is_loopback()
+        && quic_address.ip().is_loopback()
+        && webtransport_address.ip().is_loopback()
+    {
+        "loopback only (not reachable from your LAN)"
+    } else {
+        "non-loopback development bind; do not expose this configuration"
+    };
+    println!(
+        r"
+ __        __  _____ __      __ _____ _   _
+ \ \      / / | ___ |\ \    / /| ____| \ | |
+  \ \ /\ / /  |     | \ \  / / |  _| |  \| |
+   \ V  V /   | ___ |  \ \/ /  | |___| |\  |
+    \_/\_/    |_____|   \__/   |_____|_| \_|
+
+ ┌─ WOVEN NODE · LOCAL DEVELOPMENT ─────────────────────────────────────────────────
+ │ STATUS ready · INFERENCE {inference} · BINDING {binding}
+ ├─ CONNECTION ──────────────────────────────────────────────────────────────────────
+ │ QUIC quic://{quic_address} · HEALTH http://{http_address}/healthz
+ ├─ LOCAL ACCESS ────────────────────────────────────────────────────────────────────
+ │ TOKEN dev-token (development only) · STOP Ctrl-C
+ └────────────────────────────────────────────────────────────────────────────────────
+"
+    );
 }
 
 /// URLs for a development server started on ephemeral ports.
@@ -268,17 +315,79 @@ impl From<woven_core::CoreError> for ServerError {
     }
 }
 impl std::fmt::Display for ServerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io(error) => write!(formatter, "server I/O error: {error}"),
+            Self::Core(error) => write!(formatter, "core setup error: {error:?}"),
+            Self::QuicConfiguration(error) => {
+                write!(formatter, "QUIC configuration error: {error}")
+            }
+            Self::Inference(error) => write!(formatter, "inference setup error: {error}"),
+        }
     }
 }
 impl std::error::Error for ServerError {}
 
-async fn health() -> StatusCode {
-    StatusCode::OK
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LayerHealth {
+    Active,
+    Degraded,
+    Disabled,
 }
-async fn ready() -> StatusCode {
-    StatusCode::OK
+
+#[derive(Serialize)]
+struct HealthLayers {
+    core: LayerHealth,
+    transport_worker: LayerHealth,
+    http_control_plane: LayerHealth,
+    quic: LayerHealth,
+    webtransport: LayerHealth,
+    inference: LayerHealth,
+}
+
+#[derive(Serialize)]
+struct HealthResponse {
+    status: LayerHealth,
+    layers: HealthLayers,
+}
+
+async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: overall_health(state.quic_enabled),
+        layers: HealthLayers {
+            core: LayerHealth::Active,
+            transport_worker: LayerHealth::Active,
+            http_control_plane: LayerHealth::Active,
+            quic: layer_health(state.quic_enabled),
+            webtransport: layer_health(state.webtransport_enabled),
+            inference: layer_health(state.inference_enabled),
+        },
+    })
+}
+
+const fn layer_health(enabled: bool) -> LayerHealth {
+    if enabled {
+        LayerHealth::Active
+    } else {
+        LayerHealth::Disabled
+    }
+}
+
+const fn overall_health(quic_enabled: bool) -> LayerHealth {
+    if quic_enabled {
+        LayerHealth::Active
+    } else {
+        LayerHealth::Degraded
+    }
+}
+
+async fn ready(State(state): State<Arc<AppState>>) -> StatusCode {
+    if state.quic_enabled {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    }
 }
 async fn metrics() -> &'static str {
     "# Woven metrics placeholder\n"
@@ -420,4 +529,76 @@ fn development_core() -> Result<WovenCore<DevAuthenticator>, woven_core::CoreErr
         )?;
     }
     Ok(core)
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        body::{Body, to_bytes},
+        http::{Request, StatusCode},
+    };
+    use tower::ServiceExt;
+
+    use super::router_with_transports;
+
+    #[tokio::test]
+    async fn health_reports_active_and_disabled_layers() {
+        let app = router_with_transports(true, true, Some("8082/webtransport".to_owned()), false);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/healthz")
+                    .body(Body::empty())
+                    .expect("health request is valid"),
+            )
+            .await
+            .expect("health response is available");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("health response body is readable");
+        let health: serde_json::Value =
+            serde_json::from_slice(&body).expect("health response is valid JSON");
+        assert_eq!(health["status"], "active");
+        assert_eq!(health["layers"]["core"], "active");
+        assert_eq!(health["layers"]["transport_worker"], "active");
+        assert_eq!(health["layers"]["http_control_plane"], "active");
+        assert_eq!(health["layers"]["quic"], "active");
+        assert_eq!(health["layers"]["webtransport"], "active");
+        assert_eq!(health["layers"]["inference"], "disabled");
+    }
+
+    #[tokio::test]
+    async fn readiness_is_unavailable_without_quic() {
+        let app = router_with_transports(false, false, None, false);
+        let health = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/healthz")
+                    .body(Body::empty())
+                    .expect("health request is valid"),
+            )
+            .await
+            .expect("health response is available");
+        let body = to_bytes(health.into_body(), usize::MAX)
+            .await
+            .expect("health response body is readable");
+        let health: serde_json::Value =
+            serde_json::from_slice(&body).expect("health response is valid JSON");
+        assert_eq!(health["status"], "degraded");
+        assert_eq!(health["layers"]["quic"], "disabled");
+
+        let readiness = app
+            .oneshot(
+                Request::builder()
+                    .uri("/readyz")
+                    .body(Body::empty())
+                    .expect("readiness request is valid"),
+            )
+            .await
+            .expect("readiness response is available");
+        assert_eq!(readiness.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
 }

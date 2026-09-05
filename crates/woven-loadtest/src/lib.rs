@@ -147,7 +147,8 @@ struct Participant {
 pub fn run(config: LoadConfig) -> Result<Measurement, LoadError> {
     validate_config(config)?;
     let session = SessionKey::new(NAMESPACE, SESSION_ID);
-    let mut authenticator = DevAuthenticator::new();
+    let mut authenticator = DevAuthenticator::with_capacity(config.participants)
+        .map_err(|_| LoadError::InvalidConfiguration("participant count must be non-zero"))?;
     for index in 0..config.participants {
         let principal = PrincipalId::new(u64::try_from(index + 1).map_err(|_| LoadError::IdRange)?);
         authenticator
@@ -162,6 +163,7 @@ pub fn run(config: LoadConfig) -> Result<Measurement, LoadError> {
     let mut core = WovenCore::new(
         authenticator,
         CoreConfig {
+            max_connections: config.participants,
             publish_rate_limit: PublishRateLimit {
                 max_publishes: config.rounds,
                 window: Duration::from_secs(60),
@@ -370,5 +372,18 @@ mod tests {
             assert!(measurement.delivered_messages > 0);
             assert!(measurement.p50_publish_latency.is_some());
         }
+    }
+
+    #[test]
+    fn runner_supports_more_than_development_authenticator_capacity() {
+        let measurement = run(LoadConfig {
+            scenario: Scenario::SpatialGrid2D,
+            participants: 65,
+            rounds: 1,
+            max_latency_samples: 65,
+        })
+        .expect("65 participants should run");
+
+        assert_eq!(measurement.attempted_publishes, 65);
     }
 }

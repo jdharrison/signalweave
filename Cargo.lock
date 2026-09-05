@@ -1867,6 +1867,7 @@ name = "woven-transport"
 version = "0.1.2"
 dependencies = [
  "tokio",
+ "tracing",
  "woven-core",
  "woven-protocol",
 ]

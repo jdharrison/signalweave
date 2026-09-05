@@ -243,6 +243,7 @@ impl WorkerHandle {
 }
 
 /// Spawn the bounded, single-owner core command worker.
+#[allow(clippy::too_many_lines)]
 pub fn spawn_worker<A>(worker: TransportIndependentWorker<A>) -> WorkerHandle
 where
     A: Authenticator + Send + 'static,
@@ -255,8 +256,12 @@ where
         while let Some(request) = receiver.recv().await {
             match request {
                 WorkerRequest::Command { command, reply } => {
+                    #[cfg(debug_assertions)]
+                    let activity = log_development_activity(&command);
                     let action = lifecycle_action(&command);
                     let result = worker.handle(command);
+                    #[cfg(debug_assertions)]
+                    log_development_result(activity, &result);
                     if let Ok(result) = &result {
                         apply_lifecycle_action(
                             &mut worker,
@@ -273,6 +278,12 @@ where
                     recipient,
                     reply,
                 } => {
+                    #[cfg(debug_assertions)]
+                    tracing::info!(
+                        target: "woven_activity",
+                        activity = "register_lifecycle",
+                        connection_id = connection.get(),
+                    );
                     recipients.insert(connection, recipient);
                     subscriptions
                         .entry(connection)
@@ -285,6 +296,16 @@ where
                     epoch,
                     reply,
                 } => {
+                    #[cfg(debug_assertions)]
+                    tracing::info!(
+                        target: "woven_activity",
+                        activity = "subscribe_and_spawn",
+                        connection_id = connection.get(),
+                        namespace_id = space.session.namespace.get(),
+                        session_id = space.session.session.get(),
+                        space_id = space.space.get(),
+                        space_epoch = epoch.get(),
+                    );
                     let result = match worker.core_mut().subscribe(connection, space) {
                         Ok(()) => match worker.core_mut().spawn_entity(connection, space, epoch) {
                             Ok(entity) => {
@@ -309,6 +330,15 @@ where
                     space,
                     reply,
                 } => {
+                    #[cfg(debug_assertions)]
+                    tracing::info!(
+                        target: "woven_activity",
+                        activity = "activate_subscription",
+                        connection_id = connection.get(),
+                        namespace_id = space.session.namespace.get(),
+                        session_id = space.session.session.get(),
+                        space_id = space.space.get(),
+                    );
                     subscriptions.entry(connection).or_default().insert(space);
                     let _ = reply.send(());
                 }
@@ -318,6 +348,16 @@ where
                     exclude,
                     reply,
                 } => {
+                    #[cfg(debug_assertions)]
+                    tracing::info!(
+                        target: "woven_activity",
+                        activity = "broadcast_to_space",
+                        namespace_id = space.session.namespace.get(),
+                        session_id = space.session.session.get(),
+                        space_id = space.space.get(),
+                        message_kind = ?envelope.message.message_kind(),
+                        payload_bytes = envelope.payload_bytes().len(),
+                    );
                     distribute_to_space_excluding(
                         &mut worker,
                         &mut recipients,
@@ -333,6 +373,14 @@ where
                     envelope,
                     reply,
                 } => {
+                    #[cfg(debug_assertions)]
+                    tracing::info!(
+                        target: "woven_activity",
+                        activity = "send_to_connection",
+                        connection_id = connection.get(),
+                        message_kind = ?envelope.message.message_kind(),
+                        payload_bytes = envelope.payload_bytes().len(),
+                    );
                     let result = deliver_to_connection(
                         &mut worker,
                         &mut recipients,
@@ -346,6 +394,224 @@ where
         }
     });
     WorkerHandle { sender }
+}
+
+#[cfg(debug_assertions)]
+#[allow(clippy::too_many_lines)]
+fn log_development_activity(command: &Command) -> &'static str {
+    match command {
+        Command::TransportConnected => {
+            tracing::info!(target: "woven_activity", activity = "transport_connected");
+            "transport_connected"
+        }
+        Command::Authenticate { connection, .. } => {
+            tracing::info!(
+                target: "woven_activity",
+                activity = "authenticate",
+                connection_id = connection.get(),
+            );
+            "authenticate"
+        }
+        Command::JoinSession {
+            connection,
+            session,
+        }
+        | Command::JoinSessionWithAdmission {
+            connection,
+            session,
+            ..
+        } => {
+            tracing::info!(
+                target: "woven_activity",
+                activity = "join_session",
+                connection_id = connection.get(),
+                namespace_id = session.namespace.get(),
+                session_id = session.session.get(),
+            );
+            "join_session"
+        }
+        Command::RequestSessionAdmission {
+            connection,
+            session,
+            ..
+        } => {
+            tracing::info!(
+                target: "woven_activity",
+                activity = "request_admission",
+                connection_id = connection.get(),
+                namespace_id = session.namespace.get(),
+                session_id = session.session.get(),
+            );
+            "request_admission"
+        }
+        Command::LeaveSession {
+            connection,
+            session,
+        } => {
+            tracing::info!(
+                target: "woven_activity",
+                activity = "leave_session",
+                connection_id = connection.get(),
+                namespace_id = session.namespace.get(),
+                session_id = session.session.get(),
+            );
+            "leave_session"
+        }
+        Command::Subscribe { connection, space } | Command::Unsubscribe { connection, space } => {
+            let activity = if matches!(command, Command::Subscribe { .. }) {
+                "subscribe"
+            } else {
+                "unsubscribe"
+            };
+            tracing::info!(
+                target: "woven_activity",
+                activity,
+                connection_id = connection.get(),
+                namespace_id = space.session.namespace.get(),
+                session_id = space.session.session.get(),
+                space_id = space.space.get(),
+            );
+            activity
+        }
+        Command::SpawnEntity {
+            connection,
+            space,
+            epoch,
+        } => {
+            tracing::info!(
+                target: "woven_activity",
+                activity = "spawn_entity",
+                connection_id = connection.get(),
+                namespace_id = space.session.namespace.get(),
+                session_id = space.session.session.get(),
+                space_id = space.space.get(),
+                space_epoch = epoch.get(),
+            );
+            "spawn_entity"
+        }
+        Command::RemoveEntity {
+            connection,
+            session,
+            entity,
+        } => {
+            tracing::info!(
+                target: "woven_activity",
+                activity = "remove_entity",
+                connection_id = connection.get(),
+                namespace_id = session.namespace.get(),
+                session_id = session.session.get(),
+                entity_id = entity.get(),
+            );
+            "remove_entity"
+        }
+        Command::UpdateEntityPosition {
+            connection,
+            session,
+            entity,
+            ..
+        } => {
+            tracing::info!(
+                target: "woven_activity::transform",
+                activity = "update_entity_position",
+                connection_id = connection.get(),
+                namespace_id = session.namespace.get(),
+                session_id = session.session.get(),
+                entity_id = entity.get(),
+            );
+            "update_entity_position"
+        }
+        Command::TransitionEntity(_) => {
+            tracing::info!(target: "woven_activity", activity = "transition_entity");
+            "transition_entity"
+        }
+        Command::Publish(request) => {
+            if is_transform_publication(request) {
+                tracing::info!(
+                    target: "woven_activity::transform",
+                    activity = "publish_transform",
+                    connection_id = request.connection.get(),
+                    namespace_id = request.session.namespace.get(),
+                    session_id = request.session.session.get(),
+                    space_id = request.space.get(),
+                    channel_id = request.channel.get(),
+                    payload_bytes = request.payload.len(),
+                );
+                "publish_transform"
+            } else {
+                tracing::info!(
+                    target: "woven_activity",
+                    activity = "publish",
+                    connection_id = request.connection.get(),
+                    namespace_id = request.session.namespace.get(),
+                    session_id = request.session.session.get(),
+                    space_id = request.space.get(),
+                    channel_id = request.channel.get(),
+                    payload_bytes = request.payload.len(),
+                );
+                "publish"
+            }
+        }
+        Command::Snapshot {
+            connection,
+            session,
+        } => {
+            tracing::info!(
+                target: "woven_activity",
+                activity = "snapshot",
+                connection_id = connection.get(),
+                namespace_id = session.namespace.get(),
+                session_id = session.session.get(),
+            );
+            "snapshot"
+        }
+        Command::DrainOutbound { connection } => {
+            tracing::info!(
+                target: "woven_activity",
+                activity = "drain_outbound",
+                connection_id = connection.get(),
+            );
+            "drain_outbound"
+        }
+        Command::TransportLost { connection } => {
+            tracing::info!(
+                target: "woven_activity",
+                activity = "transport_lost",
+                connection_id = connection.get(),
+            );
+            "transport_lost"
+        }
+    }
+}
+
+#[cfg(debug_assertions)]
+fn is_transform_publication(request: &PublishRequest) -> bool {
+    request.entity.is_some() && matches!(request.delivery, CoreDelivery::LatestValue)
+}
+
+#[cfg(debug_assertions)]
+fn log_development_result(activity: &str, result: &Result<CommandResult, CoreError>) {
+    macro_rules! log_result {
+        ($target:literal) => {
+            if let Ok(CommandResult::Outbound(messages)) = result {
+                tracing::info!(
+                    target: $target,
+                    activity,
+                    outcome = "accepted",
+                    outbound_messages = messages.len(),
+                );
+            } else if result.is_ok() {
+                tracing::info!(target: $target, activity, outcome = "accepted");
+            } else {
+                tracing::info!(target: $target, activity, outcome = "rejected");
+            }
+        };
+    }
+
+    if matches!(activity, "publish_transform" | "update_entity_position") {
+        log_result!("woven_activity::transform");
+    } else {
+        log_result!("woven_activity");
+    }
 }
 
 fn lifecycle_action(command: &Command) -> LifecycleAction {

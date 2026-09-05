@@ -40,7 +40,10 @@ also exposes admission and queue endpoints (`/v1/virtual-servers/{server_id}/joi
 spatial grid routing for replaceable state, with owner-updated positions, cell indexes,
 radius filtering, optional exact distance checks, and reliable-event bypass; a bounded
 local load runner for broadcast, topic, 2D-grid, and 3D-grid scenarios reporting measured
-publish latency percentiles, delivery counts, queue effects, and machine metadata.
+publish latency percentiles, delivery counts, queue effects, and machine metadata. The
+runner derives its authentication and connection capacity from the requested participant
+count, so it does not inherit the development authenticator's 64-identity limit. It directly
+exercises core routing, not the live QUIC/WebTransport adapters or transport worker.
 
 **Inference plane** (`woven-inference-*`) — an optional, adjacent plane, disabled by
 default, adding no dependency to the core or protocol crates beyond twelve additive wire
