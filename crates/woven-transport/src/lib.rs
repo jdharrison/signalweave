@@ -289,7 +289,7 @@ where
                     let result = worker.handle(command);
                     #[cfg(debug_assertions)]
                     log_development_result(activity, &result);
-                    record_metrics(&worker_metrics, context, &result);
+                    observe_command(&worker_metrics, context, &result);
                     if let Ok(result) = &result {
                         apply_lifecycle_action(
                             &mut worker,
@@ -627,8 +627,20 @@ fn is_transform_publication(request: &PublishRequest) -> bool {
 enum MetricsContext {
     None,
     Connected,
-    Authenticate,
-    Join,
+    TransportLost {
+        connection: ConnectionId,
+    },
+    Authenticate {
+        connection: ConnectionId,
+    },
+    Join {
+        connection: ConnectionId,
+        session: woven_core::SessionKey,
+    },
+    Leave {
+        connection: ConnectionId,
+        session: woven_core::SessionKey,
+    },
     Publish {
         payload_bytes: u64,
         is_transform: bool,
@@ -638,10 +650,31 @@ enum MetricsContext {
 fn metrics_context(command: &Command) -> MetricsContext {
     match command {
         Command::TransportConnected => MetricsContext::Connected,
-        Command::Authenticate { .. } => MetricsContext::Authenticate,
-        Command::JoinSession { .. } | Command::JoinSessionWithAdmission { .. } => {
-            MetricsContext::Join
+        Command::TransportLost { connection } => MetricsContext::TransportLost {
+            connection: *connection,
+        },
+        Command::Authenticate { connection, .. } => MetricsContext::Authenticate {
+            connection: *connection,
+        },
+        Command::JoinSession {
+            connection,
+            session,
         }
+        | Command::JoinSessionWithAdmission {
+            connection,
+            session,
+            ..
+        } => MetricsContext::Join {
+            connection: *connection,
+            session: *session,
+        },
+        Command::LeaveSession {
+            connection,
+            session,
+        } => MetricsContext::Leave {
+            connection: *connection,
+            session: *session,
+        },
         Command::Publish(request) => MetricsContext::Publish {
             payload_bytes: request.payload.len() as u64,
             is_transform: is_transform_publication(request),
@@ -650,7 +683,12 @@ fn metrics_context(command: &Command) -> MetricsContext {
     }
 }
 
-fn record_metrics(
+/// Records both the always-on counters and a small, curated set of always-on structured
+/// relay-lifecycle log events (connect/disconnect/authenticate/join/leave), each tagged with
+/// connection/namespace/session identity so a log pipeline (e.g. Cloud Logging) can filter per
+/// tenant. Deliberately excludes per-publish events — those are unbounded in volume and already
+/// covered by `ServerMetrics`; this is meant to run in production, not just development.
+fn observe_command(
     metrics: &ServerMetrics,
     context: MetricsContext,
     result: &Result<CommandResult, CoreError>,
@@ -658,18 +696,75 @@ fn record_metrics(
     match context {
         MetricsContext::None => {}
         MetricsContext::Connected => {
-            if result.is_ok() {
+            if let Ok(CommandResult::Connected(connection)) = result {
                 metrics.record_connected();
+                tracing::info!(
+                    target: "woven_relay",
+                    connection_id = connection.get(),
+                    "connection_established"
+                );
             }
         }
-        MetricsContext::Authenticate => {
-            if result.is_err() {
+        MetricsContext::TransportLost { connection } => {
+            if result.is_ok() {
+                tracing::info!(
+                    target: "woven_relay",
+                    connection_id = connection.get(),
+                    "connection_closed"
+                );
+            }
+        }
+        MetricsContext::Authenticate { connection } => {
+            if result.is_ok() {
+                tracing::info!(
+                    target: "woven_relay",
+                    connection_id = connection.get(),
+                    "connection_authenticated"
+                );
+            } else {
                 metrics.record_authenticate_rejected();
+                tracing::warn!(
+                    target: "woven_relay",
+                    connection_id = connection.get(),
+                    "authenticate_rejected"
+                );
             }
         }
-        MetricsContext::Join => {
-            if result.is_err() {
+        MetricsContext::Join {
+            connection,
+            session,
+        } => {
+            if result.is_ok() {
+                tracing::info!(
+                    target: "woven_relay",
+                    connection_id = connection.get(),
+                    namespace_id = session.namespace.get(),
+                    session_id = session.session.get(),
+                    "session_joined"
+                );
+            } else {
                 metrics.record_join_rejected();
+                tracing::warn!(
+                    target: "woven_relay",
+                    connection_id = connection.get(),
+                    namespace_id = session.namespace.get(),
+                    session_id = session.session.get(),
+                    "session_join_rejected"
+                );
+            }
+        }
+        MetricsContext::Leave {
+            connection,
+            session,
+        } => {
+            if result.is_ok() {
+                tracing::info!(
+                    target: "woven_relay",
+                    connection_id = connection.get(),
+                    namespace_id = session.namespace.get(),
+                    session_id = session.session.get(),
+                    "session_left"
+                );
             }
         }
         MetricsContext::Publish {

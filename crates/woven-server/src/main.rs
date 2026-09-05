@@ -85,9 +85,11 @@ fn init_logging(activity_log_mode: ActivityLogMode) {
     #[cfg(debug_assertions)]
     {
         let filter = match activity_log_mode {
-            ActivityLogMode::None => "warn,woven_activity=off",
-            ActivityLogMode::All => "warn,woven_activity=info",
-            ActivityLogMode::Transform => "warn,woven_activity=off,woven_activity::transform=info",
+            ActivityLogMode::None => "warn,woven_relay=info,woven_activity=off",
+            ActivityLogMode::All => "warn,woven_relay=info,woven_activity=info",
+            ActivityLogMode::Transform => {
+                "warn,woven_relay=info,woven_activity=off,woven_activity::transform=info"
+            }
         };
         tracing_subscriber::fmt()
             .compact()
@@ -97,10 +99,21 @@ fn init_logging(activity_log_mode: ActivityLogMode) {
             .init();
     }
 
+    // Production: structured JSON to stdout, one object per line, so a log pipeline (e.g.
+    // Cloud Logging on Cloud Run/GKE, which captures stdout/stderr automatically) can parse
+    // and filter on fields like `connection_id`/`namespace_id`/`session_id` without a custom
+    // parser. Default level is deliberately narrow (only our own curated `woven_relay`
+    // lifecycle events at info; everything else, including dependencies, at warn+) so log
+    // volume stays bounded; RUST_LOG overrides this when set.
     #[cfg(not(debug_assertions))]
     {
         let _ = activity_log_mode;
-        tracing_subscriber::fmt::init();
+        let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,woven_relay=info"));
+        tracing_subscriber::fmt()
+            .json()
+            .with_env_filter(filter)
+            .init();
     }
 }
 
